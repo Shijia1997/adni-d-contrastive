@@ -148,44 +148,72 @@ glob if needed).
 
 ---
 
-## 4. Workstream 1 — RASPER for conversion (after W0, ~2–3 wk)
+## 4. Workstream 1 — RASPER for conversion (IMPLEMENTED, runnable now)
 
 RASPER (Henderson 2026) = penalized regression that borrows an **external risk
 *ranking*** instead of external *scores/coefficients*. This is the principled
 version of our existing finding that `ridge_d_hat` (an external progression score)
-beats `direct_logistic` on conversion.
+beats `direct_logistic` on conversion. RASPER is **complementary** to the
+contrastive method (W0), not a replacement: W0 is the main representation learner;
+RASPER consumes a representation + an external ranking to build the small model.
+
+**Files (all CPU-only, pure numpy/scipy/sklearn — no torch):**
+- `rasper.py` — the estimator. `RASPER` class (objective eq. 14, analytic
+  gradient, L-BFGS-B), `kendall_concordance` / `spearman_concordance` (eqs. 11/9,
+  the same smooth Kendall as W0), `select_lambda_alpha_cv` (LOO or stratified
+  k-fold, paper §3.3). `nu` default = `0.1 * ||beta_MLE||`.
+- `run_w1_rasper_conversion.py` — the experiment driver.
+- `test_rasper_sim.py` — self-check (gradient check + reproduces the paper's
+  "high rank corr, large score gap" win). **Verified locally: passes, RASPER
+  wins 20/20.**
+- `run_w1_rasper.sbatch` — cluster job (runs the self-check then the experiment).
 
 **Role mapping (decided: external ranker = option A, the d_mod3 model):**
 
-| RASPER concept | Our object |
-|---|---|
-| Internal study (small) | conversion task (MCI→AD / CN→MCI), `Y` = conversion label (or RMST pseudovalue for time-to-event) |
-| External risk model `f_E` | **Ridge `d_hat` trained on the large train split to predict `d_mod3`** |
-| External ranking `r^E` | rank of `d_hat` applied to the conversion cohort |
-| Novel covariates `b` | the contrastive latent `z` from W0 (and/or a raw-768 subset) |
-| Penalty `λ` | strength of forcing internal risk order to match `r^E` |
+| RASPER concept | Our object | In code |
+|---|---|---|
+| Internal study (small) | conversion task (MCI→AD / CN→MCI), `Y` = conversion label | censored cohort via `build_censored_conversion_cohort` |
+| External risk model `f_E` | **Ridge `d_hat` predicting `d_mod3` on the large train split** | `external_dhat()` |
+| External ranking `r^E` | rank of `d_hat` on the internal cohort | `ranks(dhat_tr[tri])` |
+| Internal covariates `x` | low-dim imaging block (**default: PCA-16 of frozen Swin 768**) | `build_internal_features()` |
+| Penalty `λ` | strength of forcing internal risk order to match `r^E` | `RASPER(lam=...)` |
 
 `d_mod3` is a related/surrogate outcome to conversion, so its **ranking** is the
 transportable signal — exactly RASPER's assumption.
 
-**Implementation:**
-- Penalized objective (paper eq. 14): logistic NLL + L2(α) − λ·log D_Kendall, with
-  the **same basic Kendall** `D` as W0; optimize via the paper's **MM/IRLS**
-  update (eq. 17), `nu = 0.1·||β̂_MLE||`, `(λ,α)` via **LOOCV**.
-- Sanity check: first reproduce the paper's Table 1/2 toy simulation.
+**Upgrade path:** `build_internal_features()` currently uses PCA-16 of the Swin
+features so W1 runs standalone *before* W0 finishes. Once W0 is done, swap in the
+W0 contrastive latent `z` as the internal covariate block (the "novel imaging
+biomarker") — this is the W0→W1 hand-off.
 
-**Scope — NOT only conversion:**
-- **conversion** = headline application: 4 horizons × 2 tasks × raw/combat.
-- **`d_mod3` regression** = statistical workhorse (n=2408, continuous), where the
-  "borrow-ranking vs borrow-score" comparison has the power to be conclusive.
+**How to run (cluster):**
+```bash
+cd /dcs07/zwang/data/adni_d/d_contrastive
+sbatch run_w1_rasper.sbatch          # self-check + full run
+# or directly:
+python run_w1_rasper_conversion.py --versions raw combat --horizons 2 3 4 \
+  --n_pca 16 --penalties kendall --cv_splits 5 --out_dir results_w1_rasper
+```
+Outputs: `results_w1_rasper/w1_rasper_conversion.{csv,md}` — one row per
+method × task × horizon × version, with **bootstrap AUC CIs** and **paired Δ +
+p-value vs `ridge_d_hat`**.
 
-**Comparator matrix (per task):** `direct_logistic`, `ridge`, `ridge_d_hat`
-(borrow score), DTL/ATL (borrow coefficients), **RASPER (borrow ranking)**,
-`oracle_true_d_mod3` (upper bound). Headline contrast: **RASPER vs `ridge_d_hat`**.
+**Comparator matrix (per task):** `direct_logistic` (internal only),
+`ridge_d_hat` (borrow score), **`rasper_kendall` (borrow ranking)**,
+`oracle_true_d_mod3` (upper bound). Headline contrast: **`rasper_*` vs
+`ridge_d_hat`** — does borrowing the *ranking* beat borrowing the *score*?
+
+**Scope note — conversion now, d_mod3 regression next:** the driver covers the
+small conversion cohorts (RASPER's natural small-n setting; exact O(n²) pairwise
+is fine here). The continuous `d_mod3` regression (n=2408) is too large for exact
+pairwise — validate that arena with the paper-style simulation in
+`test_rasper_sim.py` (and add pair-subsampling to the estimator later if a full
+d_mod3 RASPER fit is wanted).
 
 **(Optional, later) Workstream 2 — option B external ranker:** a published AD/MCI
 risk score (age/APOE/MMSE/hippocampal volume) as a black-box ranker — the truest
-RASPER setting and most publishable, pending a usable external model.
+RASPER setting and most publishable, pending a usable external model. Just replace
+`external_dhat()` with that model's score.
 
 ---
 
