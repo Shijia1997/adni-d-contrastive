@@ -1,0 +1,5 @@
+split,task,n_before_censor,converters_before_censor,n_after_censor,converters_after_censor,nonconverters_after_censor,n_excluded_short_followup
+test,CN_to_MCI_2y,94,5,59,5,54,35
+test,MCI_to_AD_2y,114,14,65,14,51,49
+train,CN_to_MCI_2y,390,14,244,14,230,146
+train,MCI_to_AD_2y,450,29,268,29,239,182

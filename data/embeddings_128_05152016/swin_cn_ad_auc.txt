@@ -1,0 +1,7 @@
+STEP 5 CN vs AD baseline disease-signal sanity
+baseline train RIDs/images: 503
+label counts: {'NORMAL': 390, 'AD': 113}
+cv folds: 5
+AUC mean: 0.851439
+AUC std: 0.017603
+AUC folds: 0.869565, 0.833333, 0.843924, 0.835082, 0.875291

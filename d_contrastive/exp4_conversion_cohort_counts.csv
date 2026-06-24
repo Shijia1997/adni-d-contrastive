@@ -1,0 +1,17 @@
+input_version,split,task,horizon_years,n_before_censor,converters_before_censor,n_after_censor,converters_after_censor,nonconverters_after_censor,n_excluded_short_followup
+raw,train,MCI_to_AD_1y,1,450,6,324,6,318,126
+raw,test,MCI_to_AD_1y,1,114,4,85,4,81,29
+raw,train,MCI_to_AD_2y,2,450,29,268,29,239,182
+raw,test,MCI_to_AD_2y,2,114,14,65,14,51,49
+raw,train,MCI_to_AD_3y,3,450,58,205,58,147,245
+raw,test,MCI_to_AD_3y,3,114,19,51,19,32,63
+raw,train,MCI_to_AD_4y,4,450,64,159,64,95,291
+raw,test,MCI_to_AD_4y,4,114,22,45,22,23,69
+raw,train,CN_to_MCI_1y,1,390,2,267,2,265,123
+raw,test,CN_to_MCI_1y,1,94,0,67,0,67,27
+raw,train,CN_to_MCI_2y,2,390,14,244,14,230,146
+raw,test,CN_to_MCI_2y,2,94,5,59,5,54,35
+raw,train,CN_to_MCI_3y,3,390,25,201,25,176,189
+raw,test,CN_to_MCI_3y,3,94,9,49,9,40,45
+raw,train,CN_to_MCI_4y,4,390,33,169,33,136,221
+raw,test,CN_to_MCI_4y,4,94,9,42,9,33,52
