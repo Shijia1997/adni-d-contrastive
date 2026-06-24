@@ -766,7 +766,16 @@ def y_aware_euclidean_loss(z, d, tau=1.0, beta=1.0):
 
 
 def soft_kendall_loss(s, d, alpha=10.0):
-    """Differentiable soft-Kendall rank loss between 1D score and d_mod3."""
+    """Differentiable soft-Kendall rank loss between 1D score and d_mod3.
+
+    NOTE: this is the *original* surrogate. It replaces the order indicator on
+    the score side with tanh(alpha * (s_i - s_j)) using a hand-picked sharpness
+    alpha=10. Because alpha is finite and fixed, tanh also responds to the
+    *magnitude* of the score gap (not just its order), so this loss is not a
+    purely ordinal/rank loss -- it leaks margin/magnitude information. Kept for
+    backward-compatibility and as the ablation baseline against
+    `kendall_loss_basic`.
+    """
     s = s.view(-1)
     d = d.view(-1).detach()
     s_diff = s.unsqueeze(0) - s.unsqueeze(1)
@@ -774,6 +783,35 @@ def soft_kendall_loss(s, d, alpha=10.0):
     concord = torch.tanh(alpha * s_diff) * d_sign
     mask = ~torch.eye(s.numel(), dtype=torch.bool, device=s.device)
     return -concord[mask].mean()
+
+
+def kendall_loss_basic(s, d, nu=None):
+    """Most-basic smoothed Kendall's tau rank loss (Henderson 2026, eq. 11).
+
+    Concordance to MAXIMIZE:
+        mean_{i!=j}  g_nu(s_i - s_j) * ( I(d_i > d_j) - 1/2 ),
+    where g_nu(x) = 1 / (1 + exp(-x / nu)) is the canonical sigmoid surrogate
+    for the order indicator I(x > 0). Returned negated so it can be minimized.
+
+    Key difference vs `soft_kendall_loss`: the smoothing scale `nu` is set by the
+    paper's principled rule  nu = 0.1 * ||score scale||  so that g_nu closely
+    approximates the indicator (g_nu(+0.25 sd) >= 0.99, g_nu(-0.25 sd) <= 0.01).
+    This keeps the loss as close to *pure rank* as a differentiable surrogate
+    allows, instead of using an arbitrary sharpness alpha that mixes in
+    score magnitude. d enters only through its order (I(d_i > d_j)); for the
+    continuous d_mod3 exact ties are negligible.
+    """
+    s = s.view(-1)
+    d = d.view(-1).detach()
+    s_diff = s.unsqueeze(0) - s.unsqueeze(1)
+    if nu is None:
+        # Principled default: nu = 0.1 * scale of the 1-D score
+        # (paper's nu = 0.1 * ||beta|| adapted to the projected score s = x^T beta).
+        nu = (0.1 * s.detach().std()).clamp_min(1e-6)
+    g = torch.sigmoid(s_diff / nu)
+    d_gt = (d.unsqueeze(0) > d.unsqueeze(1)).float() - 0.5
+    mask = ~torch.eye(s.numel(), dtype=torch.bool, device=s.device)
+    return -(g * d_gt)[mask].mean()
 
 
 def save_setup3_diagnostic_plots(z_test, y_te_d, output_dir, version):
@@ -838,7 +876,7 @@ def save_setup3_diagnostic_plots(z_test, y_te_d, output_dir, version):
 def run_setup3(data, results_dict, device='cpu', tau=0.1, beta=1.0, epochs=150,
                batch_size=128, output_dir=None, version="", hidden=256, latent=128,
                uniformity_weight=0.0, loss_mode='euclidean', rank_alpha=10.0,
-               lambda_rank=1.0):
+               lambda_rank=1.0, rank_nu=None):
     """Contrastive pretrain MLP + frozen linear probe per task."""
     print("\n" + "=" * 60)
     print("SETUP 3: Contrastive MLP + Linear probe (YOUR METHOD)")
@@ -857,7 +895,8 @@ def run_setup3(data, results_dict, device='cpu', tau=0.1, beta=1.0, epochs=150,
     print(f"  Contrastive training: {len(X_tr)} images with d_mod3")
     print(
         f"  loss_mode={loss_mode}, tau={tau}, beta={beta}, rank_alpha={rank_alpha}, "
-        f"lambda_rank={lambda_rank}, epochs={epochs}, batch_size={batch_size}"
+        f"rank_nu={rank_nu}, lambda_rank={lambda_rank}, epochs={epochs}, "
+        f"batch_size={batch_size}"
     )
     
     # Stage 1: Contrastive pretrain
@@ -887,12 +926,17 @@ def run_setup3(data, results_dict, device='cpu', tau=0.1, beta=1.0, epochs=150,
             z, s = model.score(X_tr_t[batch_idx])
             d_batch = d_tr_t[batch_idx]
             loss_euclidean = y_aware_euclidean_loss(z, d_batch, tau=tau, beta=beta)
-            loss_rank = soft_kendall_loss(s, d_batch, alpha=rank_alpha)
+            # Pick the rank surrogate: the principled basic Kendall (sigmoid + nu)
+            # for the *_basic modes, otherwise the original tanh+alpha surrogate.
+            if loss_mode in ('rank_kendall_basic', 'hybrid_basic'):
+                loss_rank = kendall_loss_basic(s, d_batch, nu=rank_nu)
+            else:
+                loss_rank = soft_kendall_loss(s, d_batch, alpha=rank_alpha)
             if loss_mode == 'euclidean':
                 loss = loss_euclidean
-            elif loss_mode == 'rank_kendall':
+            elif loss_mode in ('rank_kendall', 'rank_kendall_basic'):
                 loss = loss_rank
-            elif loss_mode == 'hybrid':
+            elif loss_mode in ('hybrid', 'hybrid_basic'):
                 loss = loss_euclidean + lambda_rank * loss_rank
             else:
                 raise ValueError(f"Unknown loss_mode: {loss_mode}")
@@ -917,6 +961,7 @@ def run_setup3(data, results_dict, device='cpu', tau=0.1, beta=1.0, epochs=150,
             "tau": tau,
             "beta": beta,
             "rank_alpha": rank_alpha,
+            "rank_nu": rank_nu,
             "lambda_rank": lambda_rank,
         })
         if (epoch + 1) == 1 or (epoch + 1) % 10 == 0 or (epoch + 1) == epochs:
@@ -970,6 +1015,7 @@ def run_setup3(data, results_dict, device='cpu', tau=0.1, beta=1.0, epochs=150,
         'tau': tau,
         'beta': beta,
         'rank_alpha': rank_alpha,
+        'rank_nu': rank_nu,
         'lambda_rank': lambda_rank,
         'final_soft_tau': tau,
         'z_std_train': z_std_train,
@@ -1065,6 +1111,7 @@ def run_setup3(data, results_dict, device='cpu', tau=0.1, beta=1.0, epochs=150,
         'tau': tau,
         'beta': beta,
         'rank_alpha': rank_alpha,
+        'rank_nu': rank_nu,
         'lambda_rank': lambda_rank,
         'final_soft_tau': tau,
         'mci_conv_auc': conversion_auc_from_score(
@@ -1269,9 +1316,18 @@ def main():
     parser.add_argument("--versions", nargs='+', default=["raw", "combat"])
     parser.add_argument("--tau", type=float, default=0.1)
     parser.add_argument("--beta", type=float, default=1.0)
-    parser.add_argument("--loss_mode", choices=["euclidean", "rank_kendall", "hybrid"],
-                        default="euclidean")
-    parser.add_argument("--rank_alpha", type=float, default=10.0)
+    parser.add_argument("--loss_mode",
+                        choices=["euclidean", "rank_kendall", "hybrid",
+                                 "rank_kendall_basic", "hybrid_basic"],
+                        default="euclidean",
+                        help="*_basic use the principled smoothed Kendall "
+                             "(sigmoid + nu); others use the original tanh+alpha.")
+    parser.add_argument("--rank_alpha", type=float, default=10.0,
+                        help="Sharpness for the original soft_kendall_loss "
+                             "(rank_kendall / hybrid only).")
+    parser.add_argument("--rank_nu", type=float, default=None,
+                        help="Smoothing scale for kendall_loss_basic. None => "
+                             "principled default nu = 0.1 * std(score).")
     parser.add_argument("--lambda_rank", type=float, default=1.0)
     parser.add_argument("--epochs", type=int, default=150)
     parser.add_argument("--supervised_epochs", type=int, default=80)
@@ -1319,7 +1375,8 @@ def main():
                                           uniformity_weight=args.uniformity_weight,
                                           loss_mode=args.loss_mode,
                                           rank_alpha=args.rank_alpha,
-                                          lambda_rank=args.lambda_rank)
+                                          lambda_rank=args.lambda_rank,
+                                          rank_nu=args.rank_nu)
         run_setup4(data, version_results, pretrained_model=contrastive_model,
                    device=device, epochs=args.supervised_epochs,
                    hidden=args.mlp_hidden, latent=args.mlp_latent)
