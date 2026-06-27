@@ -13,6 +13,10 @@ set -euo pipefail
 cd /dcs07/zwang/data/adni_d/d_contrastive
 mkdir -p /dcs07/zwang/data/adni_d/logs
 
+source /users/szhang1/fsl/bin/activate optuna_env
+export MPLCONFIGDIR=/tmp/mpl_w0_${SLURM_JOB_ID}
+mkdir -p "${MPLCONFIGDIR}"
+
 FEATS=../data/embeddings_128_05152016
 DCSV=../data/master_smri_05152016/D_with_image_paths_full.csv
 COMMON="--features_dir ${FEATS} --d_csv ${DCSV} --versions raw combat --epochs 150 --device cpu"

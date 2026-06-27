@@ -36,11 +36,11 @@ feats, split, dcsv = sys.argv[1], sys.argv[2], sys.argv[3]
 data = load_features_3way(feats, split, dcsv, version="raw")
 TASKS = [("MCI_to_AD", "MCI", "AD"), ("CN_to_MCI", "NORMAL", "MCI")]
 for name in ("contrastive", "finetune", "test"):
-    meta = data[name]["meta"]
+    meta = data[name].get("long_meta", data[name]["meta"])
     for task, base, tgt in TASKS:
         for h in (2, 3, 4):
             c = build_censored_conversion_cohort(meta, name, f"{task}_{h}y", base, tgt, h)
-            c = c[c["valid_censored"]]
+            c = c[c["valid_censored"].astype(bool)]
             print(f"  {name:11s} {task:9s} {h}y: n={len(c):4d} converters={int(c['converted'].sum())}")
 print("SELF-CHECK OK")
 PY

@@ -46,8 +46,50 @@ TASKS = [("MCI_to_AD", "MCI", "AD"), ("CN_to_MCI", "NORMAL", "MCI")]
 
 
 def cohort(meta, split, task, base, tgt, h):
-    c = build_censored_conversion_cohort(meta, split, f"{task}_{h}y", base, tgt, h)
-    return c[c["valid_censored"]].copy()
+    """Build censored conversion cohort.
+
+    If meta contains `_feature_idx`, it is complete longitudinal metadata and
+    `_feature_idx` points back to the image feature row. This is the correct
+    path for 3-way conversion evaluation: follow-up labels use all matched
+    visits, while baseline features still index into the one-image-per-row
+    feature matrix.
+    """
+    if "_feature_idx" not in meta.columns:
+        c = build_censored_conversion_cohort(meta, split, f"{task}_{h}y", base, tgt, h)
+        return c[c["valid_censored"].astype(bool)].copy()
+
+    rows = []
+    meta = meta.sort_values(["RID", "EXAMDATE.x"]).copy()
+    for rid, group in meta.groupby("RID"):
+        first = group.iloc[0]
+        if first["dx"] != base:
+            continue
+        baseline_date = first["EXAMDATE.x"]
+        horizon_date = baseline_date + pd.DateOffset(years=h)
+        follow = group[(group["EXAMDATE.x"] > baseline_date)
+                       & (group["EXAMDATE.x"] <= horizon_date)]
+        target_follow = follow[follow["dx"] == tgt]
+        converted = int(len(target_follow) > 0)
+        max_followup_days = np.nan
+        later = group[group["EXAMDATE.x"] > baseline_date]
+        if len(later):
+            max_followup_days = int((later["EXAMDATE.x"].max() - baseline_date).days)
+        valid = converted or (
+            pd.notna(max_followup_days) and max_followup_days >= h * 365
+        )
+        rows.append({
+            "split": split,
+            "task": f"{task}_{h}y",
+            "RID": rid,
+            "feature_idx": int(first["_feature_idx"]),
+            "converted": converted,
+            "valid_censored": bool(valid),
+            "max_followup_days": max_followup_days,
+        })
+    c = pd.DataFrame(rows)
+    if len(c) == 0:
+        return c
+    return c[c["valid_censored"].astype(bool)].copy()
 
 
 def ridge_dhat(X_fit, d_fit, X_test, alpha):
@@ -77,6 +119,8 @@ def run_version(version, data, args, audit):
     Xt = data["test"]["features"]
     mc, mf, mt = (data["contrastive"]["meta"], data["finetune"]["meta"],
                   data["test"]["meta"])
+    lf = data["finetune"].get("long_meta", mf)
+    lt = data["test"].get("long_meta", mt)
     dc = mc["d_mod3"].values.astype(float)
     df_ = mf["d_mod3"].values.astype(float)
     # NOTE: mt["d_mod3"] is deliberately NEVER read below.
@@ -113,8 +157,8 @@ def run_version(version, data, args, audit):
     # ---- per task x horizon evaluation on the TEST cohort --------------------
     for task, base, tgt in TASKS:
         for h in args.horizons:
-            cf = cohort(mf, "finetune", task, base, tgt, h)
-            ct = cohort(mt, "test", task, base, tgt, h)
+            cf = cohort(lf, "finetune", task, base, tgt, h)
+            ct = cohort(lt, "test", task, base, tgt, h)
             tri, ytr = cf["feature_idx"].astype(int).values, cf["converted"].astype(int).values
             tei, yte = ct["feature_idx"].astype(int).values, ct["converted"].astype(int).values
             n_te, n_conv = len(yte), int(yte.sum())

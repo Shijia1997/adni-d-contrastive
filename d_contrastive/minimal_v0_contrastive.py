@@ -960,10 +960,14 @@ def load_features_3way(features_dir, split_dir, d_csv, version="raw",
     """Load Swin features + metadata for a 3-way contrastive/finetune/test split.
 
     Each split is selected by its `{split}_image_ids.npy` list under split_dir.
-    Longitudinal metadata (needed for conversion follow-up) comes from d_csv
-    (the full D table). meta is reset_index so build_censored_conversion_cohort's
-    feature_idx (== row label of the baseline visit) indexes directly into the
-    returned feature array.
+    `meta` is one row per image and is aligned 1:1 with `features`, so d_mod3
+    supervision can index directly into the returned feature array.
+
+    Conversion labels need all longitudinal matched rows for a RID, not just one
+    row per image. If split-specific matched CSVs are present, `long_meta` keeps
+    those complete rows and adds `_feature_idx`, the image's row in `features`.
+    Downstream conversion code should use `long_meta` for follow-up labels and
+    `_feature_idx` to select the baseline image feature.
 
     Returns {split: {'features': (N,768), 'meta': DataFrame, 'image_ids': (N,)}}.
     """
@@ -983,11 +987,29 @@ def load_features_3way(features_dir, split_dir, d_csv, version="raw",
                   .drop_duplicates(image_col, keep="first")
                   .reset_index(drop=True))
         feat = Z[[lut[iid] for iid in sub[image_col].values]]
-        out[name] = {"features": feat, "meta": sub,
+        image_to_feature_idx = {iid: i for i, iid in enumerate(sub[image_col].values)}
+
+        split_csv = split_dir / f"matched_{name.upper()}.csv"
+        if split_csv.exists():
+            long_meta = pd.read_csv(split_csv)
+            long_meta["EXAMDATE.x"] = pd.to_datetime(long_meta["EXAMDATE.x"])
+            long_image_col = (
+                "Image Data ID" if "Image Data ID" in long_meta.columns else "Image_Data_ID"
+            )
+            long_meta = long_meta[long_meta[long_image_col].isin(image_to_feature_idx)].copy()
+            long_meta["_feature_idx"] = long_meta[long_image_col].map(image_to_feature_idx)
+            long_meta = long_meta.dropna(subset=["_feature_idx"]).reset_index(drop=True)
+            long_meta["_feature_idx"] = long_meta["_feature_idx"].astype(int)
+        else:
+            long_meta = sub.copy()
+            long_meta["_feature_idx"] = np.arange(len(long_meta), dtype=int)
+
+        out[name] = {"features": feat, "meta": sub, "long_meta": long_meta,
                      "image_ids": sub[image_col].values}
         n_conv_visits = len(sub)
         print(f"[{version}] {name:11s}: features {feat.shape}, RIDs "
-              f"{sub['RID'].nunique()}, visits {n_conv_visits}, d_mod3 valid "
+              f"{sub['RID'].nunique()}, image rows {n_conv_visits}, "
+              f"long rows {len(long_meta)}, d_mod3 valid "
               f"{int(sub['d_mod3'].notna().sum())}")
 
     # leakage tripwire: no RID may be shared across splits

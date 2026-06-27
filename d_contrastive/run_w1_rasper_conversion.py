@@ -68,10 +68,12 @@ def external_dhat(train_feat, test_feat, d_train, ridge_alpha=10.0):
     return rid.predict(sc.transform(train_feat)), rid.predict(sc.transform(test_feat))
 
 
-def auc_ci(y, score):
+def auc_ci(y, score, quick_no_ci=False):
     if len(np.unique(y)) < 2 or len(y) < 5:
         return np.nan, np.nan, np.nan
     auc = roc_auc_score(y, score)
+    if quick_no_ci:
+        return float(auc), np.nan, np.nan
     _, lo, hi = bootstrap_auc(y, score)
     return float(auc), lo, hi
 
@@ -91,8 +93,8 @@ def run_version(version, data, args):
                 data["train_meta"], "train", name, base_dx, tgt_dx, horizon_years=h)
             cte = build_censored_conversion_cohort(
                 data["test_meta"], "test", name, base_dx, tgt_dx, horizon_years=h)
-            ctr = ctr[ctr["valid_censored"]]
-            cte = cte[cte["valid_censored"]]
+            ctr = ctr[ctr["valid_censored"].astype(bool)]
+            cte = cte[cte["valid_censored"].astype(bool)]
             tri = ctr["feature_idx"].astype(int).values
             tei = cte["feature_idx"].astype(int).values
             ytr = ctr["converted"].astype(int).values
@@ -128,9 +130,20 @@ def run_version(version, data, args):
             # RASPER: borrow ranking
             for pen in args.penalties:
                 try:
-                    lam, al, est = select_lambda_alpha_cv(
-                        Xtr_int[tri], ytr, r_ext_tr, family="binomial", penalty=pen,
-                        n_splits=args.cv_splits, seed=0)
+                    if args.fixed_rasper:
+                        lam = float(args.lambdas[0])
+                        al = float(args.alphas[0])
+                        est = RASPER(
+                            family="binomial", penalty=pen, lam=lam, alpha=al,
+                            nu=args.rank_nu
+                        ).fit(Xtr_int[tri], ytr, r_ext_tr)
+                    else:
+                        lam, al, est = select_lambda_alpha_cv(
+                            Xtr_int[tri], ytr, r_ext_tr, family="binomial", penalty=pen,
+                            lambdas=np.asarray(args.lambdas, dtype=float),
+                            alphas=np.asarray(args.alphas, dtype=float),
+                            nu=args.rank_nu,
+                            n_splits=args.cv_splits, seed=0)
                     scores[f"rasper_{pen}"] = est.decision_function(Xte_int[tei])
                     print(f"    rasper_{pen}: lambda={lam:.3g} alpha={al:.3g} "
                           f"nu={est.nu_:.3g}")
@@ -143,10 +156,13 @@ def run_version(version, data, args):
                 if not np.all(np.isfinite(sc)):
                     auc = lo = hi = np.nan
                 else:
-                    auc, lo, hi = auc_ci(yte, sc)
+                    auc, lo, hi = auc_ci(yte, sc, quick_no_ci=args.quick_no_ci)
                 d, dlo, dhi, dp = (np.nan,) * 4
                 if method != "ridge_d_hat" and np.all(np.isfinite(sc)) and np.all(np.isfinite(base)):
-                    d, dlo, dhi, dp = paired_bootstrap_delta(yte, base, sc)
+                    if args.quick_no_ci:
+                        d = roc_auc_score(yte, sc) - roc_auc_score(yte, base)
+                    else:
+                        d, dlo, dhi, dp = paired_bootstrap_delta(yte, base, sc)
                 rows.append({
                     "version": version, "task": task, "horizon_years": h,
                     "method": method, "n": n_te, "n_converters": n_conv_te,
@@ -173,6 +189,18 @@ def main():
                     choices=["kendall", "spearman"])
     ap.add_argument("--cv_splits", type=int, default=5,
                     help="CV folds for (lambda,alpha) selection; <=0 => LOO.")
+    ap.add_argument("--lambdas", nargs="+", type=float,
+                    default=[0.0, 1.0, 3.1622776601683795, 10.0],
+                    help="Lambda grid for RASPER CV.")
+    ap.add_argument("--alphas", nargs="+", type=float,
+                    default=[1.0, 10.0],
+                    help="L2 alpha grid for RASPER CV.")
+    ap.add_argument("--fixed_rasper", action="store_true",
+                    help="Skip CV and fit RASPER with lambdas[0], alphas[0].")
+    ap.add_argument("--rank_nu", type=float, default=None,
+                    help="RASPER smoothing nu. None => 0.1 * ||beta_MLE||.")
+    ap.add_argument("--quick_no_ci", action="store_true",
+                    help="Skip bootstrap CIs/p-values for fast point estimates.")
     args = ap.parse_args()
     if args.cv_splits <= 0:
         args.cv_splits = None
