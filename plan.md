@@ -1,11 +1,16 @@
-# ADNI d_contrastive — Research Plan (pure-rank fix + RASPER for conversion)
+# ADNI d_contrastive — Research Plan (pure-rank fix + 3-way conversion study)
 
-Last updated: 2026-06-24
+Last updated: 2026-06-27
 
 This document is the single source of truth for (a) what was changed in the code
 and why, (b) how to run it on the cluster, and (c) the research plan going
 forward. Everything here is CPU-runnable (small MLP on **frozen** Swin features);
 the local laptop has no GPU/torch, so all runs happen on JHPCE.
+
+> **2026-06-27 update.** The focus is now the **3-way-split conversion study**
+> (Section 3b): contrastive / finetune / test splits, contrastive learning as the
+> main method, and two Ridge `d_hat` baselines (downstream-only vs all-train).
+> **RASPER (Section 4) is shelved** — see the note there for why.
 
 ---
 
@@ -148,7 +153,90 @@ glob if needed).
 
 ---
 
-## 4. Workstream 1 — RASPER for conversion (IMPLEMENTED, runnable now)
+## 3b. Workstream 0 (3-way split) — conversion study (CURRENT MAIN)
+
+**Why a 3-way split.** The old 2-way (train/test) mixes representation learning
+and downstream task fitting on the same `train`. To cleanly separate them — and to
+give the conversion probe its own held-out fit set — the data is re-partitioned
+into **three RID-disjoint splits** (no patient/image leakage; verified at load):
+
+| split | RIDs | unique images | role |
+|---|---|---|---|
+| `contrastive` | 477 | 1206 | pretrain the contrastive encoder on `d_mod3` (main method) |
+| `finetune` | 298 | 754 | train the downstream conversion head |
+| `test` | 418 | 1059 | **evaluation only** |
+
+Splits live on the cluster at `../data/splits_3way_20260627_v2/` as
+`{contrastive,finetune,test}_image_ids.npy` (+ matched CSVs). Conversion follow-up
+works within a split because all of a subject's visits stay together.
+
+**HARD CONSTRAINT — test never uses `d_mod3`.** The test split contributes only
+(a) imaging features and (b) conversion outcome labels (for AUC). Its `d_mod3` is
+never an input to any fit, scaler, or hyper-parameter selection. Enforced 3 ways:
+(1) by construction (`mt["d_mod3"]` is never read; `StandardScaler` is fit on
+contrastive+finetune features only); (2) a runtime audit that asserts no method's
+d-source is `test`; (3) the `.sh` self-check (RID-disjointness + cohort counts
+before any training).
+
+**Two Ridge `d_hat` baselines (the boss's request):** Ridge predicting `d_mod3`
+from imaging, then `d_hat` used directly as the conversion score —
+- `ridge_dhat_finetune` — fit on the **finetune split only** (downstream-only),
+- `ridge_dhat_all` — fit on **contrastive+finetune** (all-train); the Δ baseline.
+
+**Methods compared** (per task × horizon × version), AUC + bootstrap CI +
+paired Δ vs `ridge_dhat_all`:
+
+| method | what it is |
+|---|---|
+| `ridge_dhat_finetune` / `ridge_dhat_all` | borrow score, two training pools |
+| `direct_logistic` | internal-only logistic on raw imaging (finetune labels) |
+| `contrastive_<mode>_probe` | frozen-encoder linear probe on `z` (finetune labels) |
+| `contrastive_<mode>_finetune` | end-to-end encoder fine-tune on conversion labels |
+| `contrastive_<mode>_s` | the 1-D progression score `s`, no downstream training |
+
+`<mode> ∈ {euclidean, rank_kendall_basic, hybrid_basic}`. The frozen-probe vs
+fine-tune pair answers "freeze or fine-tune the encoder for conversion?".
+
+**Code (all additive in `minimal_v0_contrastive.py`, no existing fn modified):**
+- `train_contrastive_encoder(...)` — Stage-1 contrastive loop factored out verbatim
+  from `run_setup3` (single source of truth for the loss math).
+- `encode_features(model, X)` — frozen `(z, s)`.
+- `finetune_encoder_classifier(...)` — deep-copies the pretrained encoder + BCE head,
+  trains end-to-end; returns test P(convert).
+- `load_features_3way(features_dir, split_dir, d_csv, version)` — loads the 3 splits
+  by image-id list, builds longitudinal meta, **raises on any cross-split RID overlap**.
+- `run_w0_conversion_3way.py` — the driver; `run_w0_conversion_3way.sbatch` — one-click.
+
+**Run (cluster):**
+```bash
+cd /dcs07/zwang/data/adni_d/d_contrastive
+sbatch run_w0_conversion_3way.sbatch       # self-check -> raw+combat full run
+# or directly:
+python run_w0_conversion_3way.py \
+  --features_dir ../data/embeddings_128_05152016 \
+  --split_dir   ../data/splits_3way_20260627_v2 \
+  --d_csv       ../data/master_smri_05152016/D_with_image_paths_full.csv \
+  --versions raw combat --horizons 2 3 4 \
+  --loss_modes euclidean rank_kendall_basic hybrid_basic \
+  --epochs 150 --device cpu --out_dir results_w0_conv_3way
+```
+Outputs: `results_w0_conv_3way/w0_conversion_3way.{csv,md}`. Use `--no_finetune`
+to skip the fine-tune variant (frozen probe only).
+
+---
+
+## 4. Workstream 1 — RASPER for conversion (SHELVED 2026-06-27)
+
+> **Shelved.** Quick runs showed RASPER could not beat `ridge_d_hat` under the
+> option-A mapping: the internal covariates (PCA-16 of Swin) are a *degraded
+> subset* of the same Swin-768 information the external Ridge `d_hat` ranker
+> already uses, so borrowing that ranking adds nothing the score didn't carry — a
+> structural, not a tuning, problem. A fair test needs option B (an *independent*
+> external ranker, e.g. clinical), which we don't have a usable model for yet. The
+> code below stays in the repo and passes its self-check; revisit only if an
+> independent external ranker becomes available. Current focus = Section 3b.
+
+### (archived) Original W1 plan
 
 RASPER (Henderson 2026) = penalized regression that borrows an **external risk
 *ranking*** instead of external *scores/coefficients*. This is the principled

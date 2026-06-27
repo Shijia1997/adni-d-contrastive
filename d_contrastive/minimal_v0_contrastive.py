@@ -25,6 +25,7 @@ Output:
 """
 
 import argparse
+import copy
 import json
 import time
 from pathlib import Path
@@ -812,6 +813,193 @@ def kendall_loss_basic(s, d, nu=None):
     d_gt = (d.unsqueeze(0) > d.unsqueeze(1)).float() - 0.5
     mask = ~torch.eye(s.numel(), dtype=torch.bool, device=s.device)
     return -(g * d_gt)[mask].mean()
+
+
+def train_contrastive_encoder(X_tr, d_tr, *, device='cpu', tau=0.1, beta=1.0,
+                              epochs=150, batch_size=128, hidden=256, latent=128,
+                              loss_mode='euclidean', rank_alpha=10.0,
+                              lambda_rank=1.0, rank_nu=None, lr=1e-3,
+                              weight_decay=1e-4, seed=42, verbose=True):
+    """Stage-1 contrastive pretraining loop, factored out of run_setup3.
+
+    Trains a ContrastiveMLP_v2 on already-standardized features X_tr with the
+    continuous supervisor d_tr (d_mod3). The training math is identical to
+    run_setup3 Stage 1 -- this is the single trainer reused by the 3-way
+    conversion driver so the contrastive method does not diverge.
+
+    X_tr: (N, P) standardized features (NaN d already filtered out by caller).
+    d_tr: (N,) d_mod3 values.
+    Returns (model, loss_history).
+    """
+    torch.manual_seed(seed)
+    model = ContrastiveMLP_v2(in_dim=X_tr.shape[1], hidden=hidden, latent=latent).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    X_tr_t = torch.FloatTensor(X_tr).to(device)
+    d_tr_t = torch.FloatTensor(d_tr).to(device)
+    n = len(X_tr_t)
+    loss_history = []
+    for epoch in range(epochs):
+        model.train()
+        idx = torch.randperm(n)
+        total_loss = total_euclidean = total_rank = 0.0
+        n_batches = 0
+        for i in range(0, n, batch_size):
+            batch_idx = idx[i:i + batch_size]
+            if len(batch_idx) < 4:
+                continue
+            opt.zero_grad()
+            z, s = model.score(X_tr_t[batch_idx])
+            d_batch = d_tr_t[batch_idx]
+            loss_euclidean = y_aware_euclidean_loss(z, d_batch, tau=tau, beta=beta)
+            if loss_mode in ('rank_kendall_basic', 'hybrid_basic'):
+                loss_rank = kendall_loss_basic(s, d_batch, nu=rank_nu)
+            else:
+                loss_rank = soft_kendall_loss(s, d_batch, alpha=rank_alpha)
+            if loss_mode == 'euclidean':
+                loss = loss_euclidean
+            elif loss_mode in ('rank_kendall', 'rank_kendall_basic'):
+                loss = loss_rank
+            elif loss_mode in ('hybrid', 'hybrid_basic'):
+                loss = loss_euclidean + lambda_rank * loss_rank
+            else:
+                raise ValueError(f"Unknown loss_mode: {loss_mode}")
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            opt.step()
+            total_loss += loss.item()
+            total_euclidean += loss_euclidean.item()
+            total_rank += loss_rank.item()
+            n_batches += 1
+        loss_history.append({
+            "epoch": epoch + 1,
+            "loss": total_loss / n_batches if n_batches else np.nan,
+            "loss_euclidean": total_euclidean / n_batches if n_batches else np.nan,
+            "loss_rank": total_rank / n_batches if n_batches else np.nan,
+            "loss_mode": loss_mode, "tau": tau, "beta": beta,
+            "rank_alpha": rank_alpha, "rank_nu": rank_nu, "lambda_rank": lambda_rank,
+        })
+        if verbose and ((epoch + 1) == 1 or (epoch + 1) % 25 == 0 or (epoch + 1) == epochs):
+            h = loss_history[-1]
+            print(f"    [{loss_mode}] epoch {epoch+1}/{epochs} loss={h['loss']:.4f} "
+                  f"euclidean={h['loss_euclidean']:.4f} rank={h['loss_rank']:.4f}")
+    return model, loss_history
+
+
+def encode_features(model, X, device='cpu'):
+    """Return (z, s): frozen 128-d latent and 1-D progression score as numpy."""
+    model.eval()
+    with torch.no_grad():
+        z, s = model.score(torch.FloatTensor(X).to(device))
+    return z.cpu().numpy(), s.cpu().numpy()
+
+
+def finetune_encoder_classifier(pretrained_model, X_tr, y_tr, X_te, *, device='cpu',
+                                latent=128, epochs=60, batch_size=64, lr=5e-4,
+                                weight_decay=1e-4, seed=42):
+    """Fine-tune the WHOLE pretrained encoder + a fresh binary head on (X_tr, y_tr).
+
+    Counterpart to the frozen linear probe: instead of freezing the contrastive
+    encoder, this unfreezes it and trains end-to-end with a conversion (BCE) head.
+    A deep copy of the encoder is taken so every call restarts from the
+    pretrained weights. Returns predicted P(convert) on X_te.
+    """
+    torch.manual_seed(seed)
+    enc = copy.deepcopy(pretrained_model.encoder)
+    clf = ContrastiveFinetuneMLP(enc, latent=latent, n_out=1).to(device)
+    opt = torch.optim.AdamW(clf.parameters(), lr=lr, weight_decay=weight_decay)
+    lossfn = nn.BCEWithLogitsLoss()
+    Xtr = torch.FloatTensor(X_tr).to(device)
+    ytr = torch.FloatTensor(np.asarray(y_tr, dtype=float)).to(device)
+    n = len(Xtr)
+    for _ in range(epochs):
+        clf.train()
+        idx = torch.randperm(n)
+        for i in range(0, n, batch_size):
+            bi = idx[i:i + batch_size]
+            if len(bi) < 2:               # BatchNorm needs >1 sample
+                continue
+            opt.zero_grad()
+            logit, _ = clf(Xtr[bi])
+            loss = lossfn(logit.squeeze(-1), ytr[bi])
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(clf.parameters(), max_norm=1.0)
+            opt.step()
+    clf.eval()
+    with torch.no_grad():
+        logit, _ = clf(torch.FloatTensor(X_te).to(device))
+        return torch.sigmoid(logit.squeeze(-1)).cpu().numpy()
+
+
+def _build_global_feature_lut(features_dir, version):
+    """image_id -> row index into a global feature matrix Z (returns Z, lut)."""
+    features_dir = Path(features_dir)
+    if version == "raw":
+        Z = np.load(features_dir / "swin_latent.npy")
+        ids = np.load(features_dir / "image_id_order.npy", allow_pickle=True)
+    elif version == "combat":
+        # ComBat features were stored under the OLD train/test partition; the new
+        # 3-way split is a re-partition of the SAME images, so union them into one
+        # lookup and slice per new split.
+        Ztr = np.load(features_dir / "swin_combat_train.npy")
+        Zte = np.load(features_dir / "swin_combat_test.npy")
+        itr = np.load(features_dir / "swin_combat_train_ids.npy", allow_pickle=True)
+        ite = np.load(features_dir / "swin_combat_test_ids.npy", allow_pickle=True)
+        Z = np.concatenate([Ztr, Zte], axis=0)
+        ids = np.concatenate([itr, ite], axis=0)
+    else:
+        raise ValueError(f"Unknown version: {version}")
+    lut = {}
+    for i, iid in enumerate(ids):
+        lut.setdefault(iid, i)
+    return Z, lut
+
+
+def load_features_3way(features_dir, split_dir, d_csv, version="raw",
+                       split_names=("contrastive", "finetune", "test")):
+    """Load Swin features + metadata for a 3-way contrastive/finetune/test split.
+
+    Each split is selected by its `{split}_image_ids.npy` list under split_dir.
+    Longitudinal metadata (needed for conversion follow-up) comes from d_csv
+    (the full D table). meta is reset_index so build_censored_conversion_cohort's
+    feature_idx (== row label of the baseline visit) indexes directly into the
+    returned feature array.
+
+    Returns {split: {'features': (N,768), 'meta': DataFrame, 'image_ids': (N,)}}.
+    """
+    split_dir = Path(split_dir)
+    Z, lut = _build_global_feature_lut(features_dir, version)
+    df = pd.read_csv(d_csv)
+    df["EXAMDATE.x"] = pd.to_datetime(df["EXAMDATE.x"])
+    image_col = "Image_Data_ID" if "Image_Data_ID" in df.columns else "Image Data ID"
+
+    out = {}
+    for name in split_names:
+        split_ids = np.load(split_dir / f"{name}_image_ids.npy", allow_pickle=True)
+        keep = [iid for iid in split_ids if iid in lut]
+        sub = df[df[image_col].isin(keep)].copy()
+        sub["_abs_gap"] = sub["gap_days"].abs() if "gap_days" in sub.columns else 0
+        sub = (sub.sort_values([image_col, "_abs_gap", "EXAMDATE.x"])
+                  .drop_duplicates(image_col, keep="first")
+                  .reset_index(drop=True))
+        feat = Z[[lut[iid] for iid in sub[image_col].values]]
+        out[name] = {"features": feat, "meta": sub,
+                     "image_ids": sub[image_col].values}
+        n_conv_visits = len(sub)
+        print(f"[{version}] {name:11s}: features {feat.shape}, RIDs "
+              f"{sub['RID'].nunique()}, visits {n_conv_visits}, d_mod3 valid "
+              f"{int(sub['d_mod3'].notna().sum())}")
+
+    # leakage tripwire: no RID may be shared across splits
+    for a in split_names:
+        for b in split_names:
+            if a < b:
+                ov = set(out[a]['meta']['RID']) & set(out[b]['meta']['RID'])
+                if ov:
+                    raise RuntimeError(
+                        f"RID leakage between '{a}' and '{b}': {len(ov)} shared RIDs")
+    print(f"[{version}] leakage check OK: contrastive/finetune/test RID-disjoint")
+    return out
 
 
 def save_setup3_diagnostic_plots(z_test, y_te_d, output_dir, version):
