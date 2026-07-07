@@ -829,6 +829,13 @@ def train_contrastive_encoder(X_tr, d_tr, *, device='cpu', tau=0.1, beta=1.0,
 
     X_tr: (N, P) standardized features (NaN d already filtered out by caller).
     d_tr: (N,) d_mod3 values.
+
+    loss_mode:
+      euclidean / rank_kendall[_basic] / hybrid[_basic] -- pairwise geometries
+        that only constrain the RELATIVE structure of (z, s) w.r.t. d.
+      regress_d -- Workstream-2 arm (c): direct MSE(s, d). A per-sample loss that
+        trains the head to predict the absolute d value; exact under gradient
+        accumulation (unlike the pairwise geometries).
     Returns (model, loss_history).
     """
     torch.manual_seed(seed)
@@ -842,7 +849,7 @@ def train_contrastive_encoder(X_tr, d_tr, *, device='cpu', tau=0.1, beta=1.0,
     for epoch in range(epochs):
         model.train()
         idx = torch.randperm(n)
-        total_loss = total_euclidean = total_rank = 0.0
+        total_loss = total_euclidean = total_rank = total_reg = 0.0
         n_batches = 0
         for i in range(0, n, batch_size):
             batch_idx = idx[i:i + batch_size]
@@ -856,12 +863,19 @@ def train_contrastive_encoder(X_tr, d_tr, *, device='cpu', tau=0.1, beta=1.0,
                 loss_rank = kendall_loss_basic(s, d_batch, nu=rank_nu)
             else:
                 loss_rank = soft_kendall_loss(s, d_batch, alpha=rank_alpha)
+            # Direct-regression supervision (Workstream 2, arm c): the 1-D head is
+            # trained to PREDICT d (MSE), not just to order/space by it. This is a
+            # per-sample loss, so unlike the pairwise geometries it is exact under
+            # gradient accumulation -- the cleaner "internalize d" objective.
+            loss_reg = nn.functional.mse_loss(s, d_batch)
             if loss_mode == 'euclidean':
                 loss = loss_euclidean
             elif loss_mode in ('rank_kendall', 'rank_kendall_basic'):
                 loss = loss_rank
             elif loss_mode in ('hybrid', 'hybrid_basic'):
                 loss = loss_euclidean + lambda_rank * loss_rank
+            elif loss_mode == 'regress_d':
+                loss = loss_reg
             else:
                 raise ValueError(f"Unknown loss_mode: {loss_mode}")
             loss.backward()
@@ -870,12 +884,14 @@ def train_contrastive_encoder(X_tr, d_tr, *, device='cpu', tau=0.1, beta=1.0,
             total_loss += loss.item()
             total_euclidean += loss_euclidean.item()
             total_rank += loss_rank.item()
+            total_reg += loss_reg.item()
             n_batches += 1
         loss_history.append({
             "epoch": epoch + 1,
             "loss": total_loss / n_batches if n_batches else np.nan,
             "loss_euclidean": total_euclidean / n_batches if n_batches else np.nan,
             "loss_rank": total_rank / n_batches if n_batches else np.nan,
+            "loss_reg": total_reg / n_batches if n_batches else np.nan,
             "loss_mode": loss_mode, "tau": tau, "beta": beta,
             "rank_alpha": rank_alpha, "rank_nu": rank_nu, "lambda_rank": lambda_rank,
         })
@@ -1021,6 +1037,65 @@ def load_features_3way(features_dir, split_dir, d_csv, version="raw",
                     raise RuntimeError(
                         f"RID leakage between '{a}' and '{b}': {len(ov)} shared RIDs")
     print(f"[{version}] leakage check OK: contrastive/finetune/test RID-disjoint")
+    return out
+
+
+def load_features_2way(features_dir, master_dir, d_csv, version="raw"):
+    """Load Swin features for the PREVIOUS 2-way train/test partition.
+
+    Unlike the 3-way split, the encoder pretrain (d) AND the downstream head both
+    use `train`; only `test` is held out. Same per-split schema as
+    load_features_3way (features / meta / long_meta / image_ids), keyed by
+    train/test. For drop-in compatibility with the 3-way drivers it ALSO aliases
+    `contrastive` and `finetune` -> `train`, and sets `_mode='2way'` so those
+    drivers collapse the two ridge d_hat configs into one (see the drivers).
+
+    The train/test membership comes from `matched_TRAIN.csv` / `matched_TEST.csv`
+    under master_dir (the same longitudinal tables used to build the embeddings).
+    """
+    master_dir = Path(master_dir)
+    Z, lut = _build_global_feature_lut(features_dir, version)
+    df = pd.read_csv(d_csv)
+    df["EXAMDATE.x"] = pd.to_datetime(df["EXAMDATE.x"])
+    image_col = "Image_Data_ID" if "Image_Data_ID" in df.columns else "Image Data ID"
+
+    out = {}
+    for name, fname in (("train", "matched_TRAIN.csv"), ("test", "matched_TEST.csv")):
+        long_meta = pd.read_csv(master_dir / fname)
+        long_meta["EXAMDATE.x"] = pd.to_datetime(long_meta["EXAMDATE.x"])
+        long_image_col = (
+            "Image Data ID" if "Image Data ID" in long_meta.columns else "Image_Data_ID"
+        )
+        keep = [iid for iid in long_meta[long_image_col].unique() if iid in lut]
+        sub = df[df[image_col].isin(keep)].copy()
+        sub["_abs_gap"] = sub["gap_days"].abs() if "gap_days" in sub.columns else 0
+        sub = (sub.sort_values([image_col, "_abs_gap", "EXAMDATE.x"])
+                  .drop_duplicates(image_col, keep="first")
+                  .reset_index(drop=True))
+        feat = Z[[lut[iid] for iid in sub[image_col].values]]
+        image_to_feature_idx = {iid: i for i, iid in enumerate(sub[image_col].values)}
+
+        long_meta = long_meta[long_meta[long_image_col].isin(image_to_feature_idx)].copy()
+        long_meta["_feature_idx"] = long_meta[long_image_col].map(image_to_feature_idx)
+        long_meta = long_meta.dropna(subset=["_feature_idx"]).reset_index(drop=True)
+        long_meta["_feature_idx"] = long_meta["_feature_idx"].astype(int)
+
+        out[name] = {"features": feat, "meta": sub, "long_meta": long_meta,
+                     "image_ids": sub[image_col].values}
+        print(f"[{version}] {name:5s}: features {feat.shape}, RIDs "
+              f"{sub['RID'].nunique()}, image rows {len(sub)}, "
+              f"long rows {len(long_meta)}, d_mod3 valid "
+              f"{int(sub['d_mod3'].notna().sum())}")
+
+    overlap = set(out["train"]["meta"]["RID"]) & set(out["test"]["meta"]["RID"])
+    if overlap:
+        raise RuntimeError(f"RID leakage between train and test: {len(overlap)} shared RIDs")
+    print(f"[{version}] leakage check OK: train/test RID-disjoint")
+
+    # aliases so the 3-way drivers run unchanged; _mode tells them to collapse ridge.
+    out["contrastive"] = out["train"]
+    out["finetune"] = out["train"]
+    out["_mode"] = "2way"
     return out
 
 

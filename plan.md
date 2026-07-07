@@ -1,13 +1,22 @@
-# ADNI d_contrastive — Research Plan (pure-rank fix + 3-way conversion study)
+# ADNI d_contrastive — Research Plan (d-internalization + 3-way conversion study)
 
-Last updated: 2026-06-27
+Last updated: 2026-07-01
 
 This document is the single source of truth for (a) what was changed in the code
 and why, (b) how to run it on the cluster, and (c) the research plan going
 forward. Everything here is CPU-runnable (small MLP on **frozen** Swin features);
 the local laptop has no GPU/torch, so all runs happen on JHPCE.
 
-> **2026-06-27 update.** The focus is now the **3-way-split conversion study**
+> **2026-07-01 update — NEW MAIN: Workstream 2 (Section 8), "internalizing d into
+> the image encoder."** The 3-way conversion study (Section 3b) established the
+> key empirical fact: a Ridge `d_hat` (frozen-embedding → `d_mod3`) *beats* the
+> contrastive and task-trained baselines. So `d` carries strong, transferable
+> signal. The new question is whether an image encoder can **internalize** that
+> signal — image-only at inference, no `d` recomputed — and improve both
+> **diagnosis (CN/MCI/AD)** and **conversion**. Sections 3b/1 remain the frozen
+> baselines this workstream must beat.
+>
+> **2026-06-27 update.** The focus was the **3-way-split conversion study**
 > (Section 3b): contrastive / finetune / test splits, contrastive learning as the
 > main method, and two Ridge `d_hat` baselines (downstream-only vs all-train).
 > **RASPER (Section 4) is shelved** — see the note there for why.
@@ -342,3 +351,206 @@ python minimal_v0_contrastive.py \
 # full Workstream 0
 sbatch run_w0_rank_ablation.sbatch
 ```
+
+---
+
+## 8. Workstream 2 — internalizing `d` into the image encoder (NEW MAIN, 2026-07-01)
+
+### 8.0 Thesis / central question
+
+`d_mod3` (Wang's continuous AD-progression score) is a strong **dense** supervisor:
+the 3-way study (Section 3b) showed a Ridge `d_hat` (frozen 768-d → `d`) *beats*
+contrastive-geometry and task-trained baselines on conversion. That means `d`
+holds transferable disease signal that the current pipeline only reaches by
+explicitly regressing `d` at test time.
+
+> **Central question.** Can an image encoder *internalize* `d` — so that at
+> inference we use **image only, without recomputing `d`** — and still get the
+> benefit on **diagnosis (CN/MCI/AD)** and **conversion (MCI→AD, CN→MCI)**?
+> And, as a ceiling: **how much of `d`'s value survives image-only vs. having
+> `d` explicitly available?**
+
+### 8.1 Two inference regimes (kept explicit — this is the crux)
+
+- **R1 — image-only (primary goal).** `d` is used *only during training* to shape
+  the encoder. Test path: `image → encoder → task head`. No `d` computed at test.
+  This is the deployment-realistic setting ("不需要重新算 d").
+- **R2 — `d`-as-support (ceiling / additional analysis).** `d` (from the test
+  image via Wang's model) is concatenated with the imaging representation at test.
+  Answers "if you *do* have `d`, how much does it help." Mainly a support/upper-bound.
+
+**Leakage rule (unchanged, enforced 3 ways as in 3b).** The **test** split's
+`d_mod3` never enters any fit, scaler, or hyper-parameter selection. In **R2**,
+`d` is a *test-image-derived input feature* fed to a model whose parameters were
+fit on train only — this is allowed, but it **changes the deployment assumption**
+(you must run Wang's model at test), so R2 rows are always labeled as such and
+never mixed into the R1 headline.
+
+### 8.1b Split mode — 2-way (PRIMARY for W2) vs 3-way  *(decided 2026-07-03)*
+
+W2 runs on the **2-way** `train`/`test` partition (the previous split, from
+`matched_TRAIN.csv` / `matched_TEST.csv`): the encoder pretrains on `train`'s `d`
+**and** the downstream head trains on `train`'s task labels; `test` is held out.
+Rationale: the strict 3-way split starved the downstream (finetune ≈ 298 subjects,
+few converters → high variance), which was a main reason contrastive looked weak.
+2-way gives the methods the full train pool with **no test leakage** — it only
+drops the clean representation-vs-head data separation, which is a fairness nicety,
+not a leakage requirement.
+
+Every W2 driver takes `--mode {2way,3way}` (default `3way` for back-compat; the W2
+sbatches pass `--mode 2way`). Loader `load_features_2way` returns `train`/`test`
+and aliases `contrastive`/`finetune`→`train` with `_mode='2way'`, so the drivers
+run unchanged; in 2-way the two ridge `d_hat` configs collapse to one fit on
+`train` (`ridge_dhat_finetune` == `ridge_dhat_all`). `test` `d` is still never in
+any fit.
+
+### 8.2 Design axes
+
+| Axis | Levels |
+|---|---|
+| **A. How `d` supervises the encoder** | (a) none / task-only baseline · (b) contrastive geometry on `d` (euclidean / rank — current W0) · (c) **direct `d`-regression** (encoder trained to predict `d`, MSE) — NEW |
+| **B. How much the encoder adapts** | (i) frozen Swin + light head (current) · (ii) **LoRA** on `swinViT` · (iii) full fine-tune |
+| **C. Downstream task** | diagnosis 3-class CN/MCI/AD (+ CN/AD, CN/MCI binaries) · conversion MCI→AD, CN→MCI (2/3/4 y) |
+| **D. Scheme** | two-stage (pretrain-`d` → freeze rep → train task head) vs. joint / auxiliary (`task loss + λ·d loss`) |
+| **E. Covariates** | +age, +APOE — *additional analysis, added last* |
+
+The scientific spine is **A × B**: does *direct `d`-regression* (c) beat
+*contrastive geometry* (b), and does *adapting the backbone* (ii/iii) beat
+*frozen* (i)? Everything else is held fixed for fairness (§8.7).
+
+### 8.3 Phase 0 — characterize `d` ↔ diagnosis ↔ conversion (analysis, CPU, cheap)
+
+Pure analysis, no training. Establishes the **ceiling every later method chases**:
+- correlation / ordinal-AUC of true `d_mod3` vs diagnosis, and vs conversion;
+- AUC of **true `d`** and of **frozen `d_hat`** for each task (the borrow-score ceiling);
+- how much diagnosis/conversion signal is `d`-explained vs. imaging residual.
+
+Deliverable: a "`d`-value" table — the number each internalization method is trying
+to recover from image alone.
+
+### 8.4 Phase 1 — frozen encoder, image-only (reuse existing infra, CPU)
+
+On the frozen 768-d embeddings (`data/embeddings_128_05152016`, raw + combat),
+compare **supervision × scheme** for both tasks:
+- (a) no-`d` baseline: task head directly on 768-d (logistic/BCE; reuse `binary_dx_auc`, `logistic_score`).
+- (b) contrastive-geometry pretrain (euclidean / rank) → probe / fine-tune head (current W0 code).
+- (c) **NEW direct-`d`-regression pretrain**: encoder + `progression_head` trained with `MSE(head(z), d)`, then downstream task on the learned rep. Implement as a `loss_mode="regress_d"` in `train_contrastive_encoder`, or an added `--aux_mse_lambda` for the joint scheme — additive, does not touch existing modes.
+- schemes: two-stage vs. joint/auxiliary.
+
+This is the cheap core and directly tests the earlier hypothesis: *a direct-`d`
+regression objective should be a cleaner internalization of `d` than the
+relative-only contrastive geometry.* Baselines `ridge_dhat_finetune` /
+`ridge_dhat_all` / `direct_logistic` ride along in every table.
+
+> **Implemented (2026-07-03).** `regress_d` mode added to
+> `train_contrastive_encoder` (per-sample `MSE(s, d)`, additive — existing modes
+> untouched). Drivers: `run_w0_phase0_dvalue.py` (Phase 0 ceiling),
+> `run_w0_phase1_diagnosis.py` (diagnosis 3-class + binaries, arms a/b/c),
+> conversion via `run_w0_conversion_3way.py` with `regress_d` added to
+> `--loss_modes`. **Scheme = two-stage** (pretrain `d` → freeze → task head), which
+> is exactly the "先学 d 再学 task" ask; the joint/auxiliary scheme is a later
+> extension. One-click: `run_w2_phase01.sbatch` (CPU/`shared`).
+
+### 8.4b Phase 1 — `d`-as-support (regime R2 ceiling)  *(implemented 2026-07-03)*
+
+Directly answers "把 `d` 加进去和 image 一起,会更好". `run_w2_phase1_dsupport.py`
+compares, per diagnosis/conversion task: `image_only` vs `image+dhat` (R1,
+deployable, `d_hat` = frozen Ridge) vs `image+dtrue` (R2, feeds the test image's
+true `d` as an input feature at test time — params still fit on train only; the
+`d` column is z-scored by finetune stats so no test stats leak into the transform).
+R2 rows are labelled non-deployable and never enter an R1 headline. Frozen, CPU;
+runs from the same `run_w2_phase01.sbatch` bucket if desired.
+
+### 8.5 Phase 2 — unfreeze the Swin: LoRA + full fine-tune  **[code written 2026-07-03; run gated on infra]**
+
+**Gate (confirm on cluster on first run — the sbatch step 0 does this):** raw NIfTI
+volumes reachable via `sMRI_path`, the BTCV `SwinUnetrModelForInference` package
+(`/dcs07/zwang/data/pmrc/SwinUNETR/BTCV`) importable, HF weights
+`darragh/swinunetr-btcv-base` cached, GPU node reachable. **This laptop has no GPU
+— every Swin/LoRA job runs on the cluster via `sbatch` only.**
+
+- (ii) **LoRA** (self-contained `LoRALinear`, no `peft` dep) injected into `swinViT`
+  Linear modules matching `--lora_targets` (default `(qkv|proj|fc1|fc2)$`); backbone
+  frozen, adapters + head trained. (iii) **full fine-tune** of `swinViT` + head.
+- **Design decision (reuse):** the trainer (`train_w2_phase2_swin.py`) trains
+  `Swin(adapt) → ContrastiveMLP_v2 head` on contrastive `d`, then **exports the
+  adapted 768-d pooled backbone features** in the frozen on-disk layout
+  (`swin_latent.npy` + `image_id_order.npy`). Downstream then reuses the Phase-0/1
+  CPU drivers **byte-for-byte** on that export — so any delta is attributable to the
+  backbone adapting: a clean **adapted-768 vs original-768** comparison, holding the
+  downstream identical.
+- Compute (§8.8): physical batch 8 + grad-accum 16 (eff 128) + gradient
+  checkpointing; GPU node `compute-126`. Orchestrated by `run_w2_phase2_swin.sbatch`
+  (step 0 = module-tree dump + LoRA forward/backward+export smoke; step 1 = adapt ×
+  loss-geometry, then downstream on each adapted export).
+- **Cannot be validated off-cluster** (needs GPU + volumes + BTCV pkg). Locally only
+  AST/`bash -n` checked; the sbatch step 0 is the real first-run verification.
+
+### 8.6 Phase 3 — covariates + R2 ceiling  **[additional analysis, last]**
+
+- **age / APOE — DEFERRED (2026-07-03): data not available yet.** Revisit once the
+  covariate data lands. Columns `age`/`ageori`/`apoe` already exist in the master
+  CSVs but the values/coverage we need are pending. Question when done: *given `d`
+  is already modelled, does age/APOE add anything?* (fine if not — an ablation).
+- **R2 `d`-as-support** ceiling: **done** in §8.4b (`run_w2_phase1_dsupport.py`).
+
+### 8.7 Fairness protocol (applies to every arm)
+
+1. **Same 3-way RID-disjoint split** (contrastive / finetune / test) as 3b; same
+   fixed seeds; test `d` never in any fit.
+2. **Same metrics + CIs**: diagnosis = 3-class macro-AUC + CN/AD + CN/MCI AUC;
+   conversion = per-task/horizon AUC with **bootstrap CIs** and **paired Δ vs
+   `ridge_dhat_all`** (helpers in `experiment_utils.py`).
+3. **Same downstream head capacity + epochs** when comparing supervision arms, so a
+   difference reflects the *representation*, not head budget.
+4. **Matched optimizer cadence across B-levels**: frozen uses batch 128; LoRA /
+   full-FT use physical batch 8 + gradient accumulation to **effective 128** (§8.8).
+5. **Contrastive pairwise-batch caveat (important).** Gradient accumulation does
+   **not** enlarge the in-batch pair set: a pairwise contrastive loss over 16
+   micro-batches of 8 sees 16 independent 8-sample pair problems, *not* one
+   128-sample pair problem. For per-sample losses (regression MSE, BCE) accumulation
+   is exact; for the pairwise geometry it is **not**. To keep b (contrastive) fair:
+   - enable **gradient checkpointing** on `swinViT` to push the *physical* batch as
+     high as memory allows (LoRA has few trainable params → activations dominate →
+     checkpointing buys the most headroom);
+   - optionally add a **feature memory-bank / queue** (MoCo-style) so the pairwise
+     loss sees a large effective pool at small physical batch;
+   - always report a **matched frozen-batch-8 contrastive control** so frozen vs
+     LoRA are compared at *equal pairwise batch*, not 128-vs-8.
+   The direct-`d`-regression arm (c) is immune to this — another reason it is the
+   cleaner primary internalization objective.
+6. **Baselines in every table**: `ridge_dhat_finetune`, `ridge_dhat_all`,
+   `direct_logistic` (task-only). A method "wins" only if it beats these image-only
+   / borrow-score references.
+
+### 8.8 Compute / infra standard (all Swin-based jobs)
+
+- **Cluster-only, GPU.** No local GPU; author/py_compile locally, run via `sbatch`.
+- **GPU node:** `compute-126` for **all** Swin / Swin-LoRA / full-FT experiments
+  (`#SBATCH --nodelist=compute-126`, `--gres=gpu:1`; confirm the partition that
+  owns `compute-126` on first submit).
+- **Batching:** Swin & Swin-LoRA contrastive → **physical batch 8** + gradient
+  accumulation to **effective 128** (accum steps = 16) + **gradient checkpointing
+  on**. Effective 128 is chosen to match the current frozen contrastive batch.
+- **Frozen-embedding jobs stay CPU** (`shared` partition, batch 128) — Phase 0/1.
+- **Current contrastive batch size = 128** (`train_contrastive_encoder` default;
+  `run_w0_conversion_3way.py --batch_size 128`) — this is the "effective 128" target.
+
+### 8.9 Execution order & deliverables
+
+`P0 (ceiling) → P1 (frozen, direct-d vs contrastive, both tasks) → P2 (LoRA/full-FT,
+gated) → P3 (age/APOE + R2)`. P0/P1 start now (no new infra); P2 starts once §8.5
+gate is confirmed.
+
+Deliverables:
+- **Ceiling table** (P0): true-`d` and frozen-`d_hat` AUC per task.
+- **Master table**: rows = supervision × adaptation × scheme, cols = diagnosis +
+  conversion metrics, `ridge_dhat_*` baseline rows always present, R1 vs R2 labeled.
+- **Gain-from-adaptation table**: frozen vs LoRA vs full-FT, per supervision arm.
+
+### 8.10 Open items to confirm
+
+- Exact partition owning `compute-126` (and whether it needs `--account` / QOS).
+- LoRA target modules inside `swinViT` (attention `qkv`/`proj`, MLP `fc1`/`fc2`).
+- Whether raw volumes are already resampled/cached or must be re-read per epoch
+  (I/O budget for full-FT vs LoRA).

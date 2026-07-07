@@ -37,6 +37,7 @@ from experiment_utils import (
 )
 from minimal_v0_contrastive import (
     load_features_3way,
+    load_features_2way,
     train_contrastive_encoder,
     encode_features,
     finetune_encoder_classifier,
@@ -130,13 +131,21 @@ def run_version(version, data, args, audit):
     scaler = StandardScaler().fit(np.vstack([Xc, Xf]))
     Xc_s, Xf_s, Xt_s = scaler.transform(Xc), scaler.transform(Xf), scaler.transform(Xt)
 
-    # ---- borrow-score baselines: Ridge d_hat, two training configs -----------
-    dhat_ft = ridge_dhat(Xf_s, df_, Xt_s, args.ridge_alpha)             # finetune only
-    X_all = np.vstack([Xc_s, Xf_s])
-    d_all = np.concatenate([dc, df_])
-    dhat_all = ridge_dhat(X_all, d_all, Xt_s, args.ridge_alpha)         # contrastive+finetune
-    audit["ridge_dhat_finetune"] = "fit d on finetune split"
-    audit["ridge_dhat_all"] = "fit d on contrastive+finetune splits"
+    # ---- borrow-score baselines: Ridge d_hat -------------------------------
+    split_mode = data.get("_mode", "3way")
+    dhat_ft = ridge_dhat(Xf_s, df_, Xt_s, args.ridge_alpha)             # finetune (2way: train)
+    if split_mode == "2way":
+        # encoder-pretrain and head pools are the same `train` split, so the two
+        # ridge configs collapse to one fit on train.
+        dhat_all = dhat_ft
+        audit["ridge_dhat_finetune"] = "fit d on train split (2way)"
+        audit["ridge_dhat_all"] = "fit d on train split (2way; == finetune)"
+    else:
+        X_all = np.vstack([Xc_s, Xf_s])
+        d_all = np.concatenate([dc, df_])
+        dhat_all = ridge_dhat(X_all, d_all, Xt_s, args.ridge_alpha)     # contrastive+finetune
+        audit["ridge_dhat_finetune"] = "fit d on finetune split"
+        audit["ridge_dhat_all"] = "fit d on contrastive+finetune splits"
 
     # ---- contrastive encoders (MAIN method), one per loss mode ---------------
     enc = {}
@@ -152,7 +161,9 @@ def run_version(version, data, args, audit):
         zf, _ = encode_features(model, Xf_s, args.device)
         zt, st = encode_features(model, Xt_s, args.device)
         enc[mode] = (model, zf, zt, st)
-        audit[f"contrastive_{mode}"] = "fit d on contrastive split (encoder)"
+        audit[f"contrastive_{mode}"] = (
+            "fit d on train split (2way, encoder)" if split_mode == "2way"
+            else "fit d on contrastive split (encoder)")
 
     # ---- per task x horizon evaluation on the TEST cohort --------------------
     for task, base, tgt in TASKS:
@@ -205,7 +216,11 @@ def run_version(version, data, args, audit):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--features_dir", default="../data/embeddings_128_05152016")
+    ap.add_argument("--mode", choices=["2way", "3way"], default="3way",
+                    help="2way: encoder+head both on train, test held out")
     ap.add_argument("--split_dir", default="../data/splits_3way_20260627_v2")
+    ap.add_argument("--master_dir", default="../data/master_smri_05152016",
+                    help="2way: dir with matched_TRAIN.csv / matched_TEST.csv")
     ap.add_argument("--d_csv",
                     default="../data/master_smri_05152016/D_with_image_paths_full.csv")
     ap.add_argument("--out_dir", default="results_w0_conv_3way")
@@ -237,8 +252,11 @@ def main():
 
     all_rows, audit = [], {}
     for v in args.versions:
-        print(f"\n===== VERSION: {v} =====")
-        data = load_features_3way(args.features_dir, args.split_dir, args.d_csv, version=v)
+        print(f"\n===== VERSION: {v} (mode={args.mode}) =====")
+        if args.mode == "2way":
+            data = load_features_2way(args.features_dir, args.master_dir, args.d_csv, version=v)
+        else:
+            data = load_features_3way(args.features_dir, args.split_dir, args.d_csv, version=v)
         all_rows += run_version(v, data, args, audit)
 
     # Audit: prove TEST d_mod3 was never a fit input.
