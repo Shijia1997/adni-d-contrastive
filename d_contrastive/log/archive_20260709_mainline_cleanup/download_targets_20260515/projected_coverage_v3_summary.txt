@@ -1,0 +1,14 @@
+=== V3 final image ID list + projected coverage ===
+V3 input rows: 2267
+V3 input unique Image Data IDs: 2267
+Excluded already in project unique IDs: 532
+Final V3 download unique IDs: 1735
+Additional beyond previous combined final: 853
+Overlap with previous combined final retained: 882
+Final V3 candidate unique RIDs with RID mapped: 473
+
+            name  matched_visits  unique_images  unique_rids  rids_ge2_images  rids_ge3_images  rids_ge4_images  span_median  span_ge05  converter_rids  mci_to_ad  cn_to_ad  cn_to_mci
+     current_180            2185           2099          989              566              316              128     0.114727         58             305        144        23        138
+v3_projected_180            3271           3120         1204              864              585              251     0.156679        100             380        175        32        173
+     current_365            2586           2099          989              566              316              128     0.115449         62             305        144        23        138
+v3_projected_365            3781           3166         1205              881              600              259     0.161245        111             381        175        32        174

@@ -1,0 +1,29 @@
+=== Projected longitudinal gain if all final Image IDs are downloaded/preprocessed ===
+Candidate unique images: 627
+Candidate unique RIDs: 247
+
+         name  matched_visits  unique_images  unique_rids  rids_ge2_images  rids_ge3_images  rids_ge4_images  median_images_per_rid  span_median  span_ge05  span_ge10  converter_rids  mci_to_ad_rids  cn_to_ad_rids  cn_to_mci_rids
+  current_180            2185           2099          989              566              316              128                    2.0     0.114727         58          7             305             144             23             138
+projected_180            2596           2454         1042              709              444              150                    2.0     0.126448         61          7             314             148             23             143
+  current_365            2586           2099          989              566              316              128                    2.0     0.115449         62          8             305             144             23             138
+projected_365            3002           2474         1042              718              453              152                    2.0     0.126616         67          8             314             148             23             143
+
+Candidate RID impact:
+  RIDs getting added images: 247
+  converters getting added images: 109
+    MCI_to_AD: 64
+    CN_to_AD: 4
+    CN_to_MCI: 41
+  d_span>=0.5 RIDs getting added images: 37
+  current 0-image RIDs getting images: 53
+  current <=1-image RIDs getting images: 175
+
+Projected image count distribution among candidate RIDs:
+count    247.000000
+mean       3.615385
+std        1.493157
+min        1.000000
+25%        2.000000
+50%        4.000000
+75%        5.000000
+max       10.000000

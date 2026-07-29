@@ -160,7 +160,7 @@ class SwinEncoderWithHead(nn.Module):
 
 def build_backbone(model_id, device):
     from swinunetr import SwinUnetrModelForInference
-    model = SwinUnetrModelForInference.from_pretrained(model_id)
+    model = SwinUnetrModelForInference.from_pretrained(model_id, local_files_only=True)
     return model.model.swinViT.to(device), model.config
 
 

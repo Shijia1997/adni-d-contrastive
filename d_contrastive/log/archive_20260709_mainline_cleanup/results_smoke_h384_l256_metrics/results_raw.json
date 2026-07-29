@@ -1,0 +1,56 @@
+{
+  "setup1": {
+    "cn_ad_auc": 0.8596078431372549,
+    "3class_acc": 0.45171849427168576,
+    "3class_macro_auc": 0.6572470492793042,
+    "mci_conv_auc": 0.6435714285714286,
+    "cn_mci_conv_auc": 0.3168539325842697,
+    "r2_d_mod3": 0.23710960875446763,
+    "pearson_d_mod3": 0.5124470794932334,
+    "spearman_d_mod3": 0.4669281913831996,
+    "alignment_spearman": 0.045348603416511986
+  },
+  "setup2": {
+    "cn_ad_auc": 0.6065882352941177,
+    "3class_acc": 0.44680851063829785,
+    "3class_macro_auc": 0.547599197645268,
+    "mci_conv_auc": 0.6071428571428572,
+    "cn_mci_conv_auc": 0.748314606741573,
+    "r2_d_mod3": 0.026245915953965193,
+    "pearson_d_mod3": 0.24880596344780154,
+    "spearman_d_mod3": 0.24958830947259109,
+    "alignment_spearman": 0.054900431252053454
+  },
+  "setup3": {
+    "z_std_train": 0.6666962504386902,
+    "z_std_test": 0.7979152798652649,
+    "z_dim_std_mean": 0.5887089371681213,
+    "z_dim_std_max": 1.3562262058258057,
+    "z_active_dims_005": 256,
+    "z_active_dims_010": 256,
+    "z_active_dims_050": 146,
+    "cn_ad_auc": 0.7347450980392157,
+    "3class_acc": 0.4828150572831424,
+    "3class_macro_auc": 0.6195327728650912,
+    "mci_conv_auc": 0.475,
+    "cn_mci_conv_auc": 0.42921348314606744,
+    "r2_d_mod3": 0.08706980178891954,
+    "pearson_d_mod3": 0.37692024613103053,
+    "spearman_d_mod3": 0.33535845826619126,
+    "alignment_spearman": 0.05747000649436504,
+    "pca_plot": "results_smoke_h384_l256_metrics/setup3_pca_d_mod3_raw.png",
+    "pairwise_plot": "results_smoke_h384_l256_metrics/setup3_pairwise_distance_raw.png",
+    "tsne_plot": "results_smoke_h384_l256_metrics/setup3_tsne_d_mod3_raw.png"
+  },
+  "setup4": {
+    "cn_ad_auc": 0.6371764705882353,
+    "3class_acc": 0.40425531914893614,
+    "3class_macro_auc": 0.5306115489354976,
+    "mci_conv_auc": 0.37142857142857144,
+    "cn_mci_conv_auc": 0.6247191011235955,
+    "r2_d_mod3": 0.056461499458485,
+    "pearson_d_mod3": 0.24649328197724138,
+    "spearman_d_mod3": 0.2764262915866355,
+    "alignment_spearman": 0.04715019897838837
+  }
+}

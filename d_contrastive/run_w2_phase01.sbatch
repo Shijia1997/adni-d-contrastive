@@ -16,7 +16,8 @@ cd /dcs07/zwang/data/adni_d/d_contrastive
 mkdir -p /dcs07/zwang/data/adni_d/logs
 
 source /users/szhang1/fsl/bin/activate optuna_env
-export MPLCONFIGDIR=/tmp/mpl_w2_${SLURM_JOB_ID}
+export TMPDIR=/dcs07/zwang/data/adni_d/tmp_runtime/${SLURM_JOB_ID}
+export MPLCONFIGDIR=${TMPDIR}/mpl
 mkdir -p "${MPLCONFIGDIR}"
 
 # MODE=2way (encoder pretrain + downstream head both on `train`, `test` held out).

@@ -1,0 +1,43 @@
+{
+  "setup1": {
+    "cn_ad_auc": 0.8634994656562712,
+    "3class_acc": 0.49743589743589745,
+    "3class_macro_auc": 0.6566878156846665,
+    "mci_conv_auc": 0.5,
+    "r2_d_mod3": 0.1778461795729136,
+    "pearson_d_mod3": 0.4618281713454936
+  },
+  "setup2": {
+    "cn_ad_auc": 0.781599145050034,
+    "3class_acc": 0.4,
+    "3class_macro_auc": 0.5803820574005851,
+    "mci_conv_auc": 0.4285714285714286,
+    "r2_d_mod3": 0.0012988711407838638
+  },
+  "setup3": {
+    "z_std_train": 0.8870851993560791,
+    "z_std_test": 0.8870809674263,
+    "z_dim_std_mean": 0.02817072719335556,
+    "z_dim_std_max": 0.05579347908496857,
+    "z_active_dims_005": 4,
+    "z_active_dims_010": 0,
+    "z_active_dims_050": 0,
+    "cn_ad_auc": 0.6621004566210045,
+    "3class_acc": 0.4205128205128205,
+    "3class_macro_auc": 0.5512485154558094,
+    "mci_conv_auc": 0.5047619047619047,
+    "r2_d_mod3": 0.04147205817939137,
+    "pearson_d_mod3": 0.26635857811807473,
+    "alignment_spearman": -0.05446736406676057,
+    "pca_plot": "results_euclidean_uniform_s60_c200_l768/setup3_pca_d_mod3_raw.png",
+    "pairwise_plot": "results_euclidean_uniform_s60_c200_l768/setup3_pairwise_distance_raw.png",
+    "tsne_plot": "results_euclidean_uniform_s60_c200_l768/setup3_tsne_d_mod3_raw.png"
+  },
+  "setup4": {
+    "cn_ad_auc": 0.8318274555523171,
+    "3class_acc": 0.44871794871794873,
+    "3class_macro_auc": 0.6173589458586903,
+    "mci_conv_auc": 0.41904761904761906,
+    "r2_d_mod3": 0.1501192722861867
+  }
+}

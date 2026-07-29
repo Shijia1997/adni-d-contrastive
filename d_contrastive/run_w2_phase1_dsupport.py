@@ -85,17 +85,17 @@ def run_version(version, data, args, audit):
                      "n_positive": n_pos, "method": method,
                      "auc": auc, "ci_lo": lo, "ci_hi": hi})
 
-    def eval_block(kind, task, Xf_rep, Xt_rep, ytr, yte, df_fit, dt_fit_hat,
+    def eval_block(kind, task, Xf_rep, Xt_rep, ytr, yte, df_fit, dt_hat_eval,
                    df_true, dt_true_eval):
         n, n_pos = len(yte), int(yte.sum())
         # image only
         add(kind, task, n, n_pos, "image_only", probe_auc(Xf_rep, ytr, Xt_rep, yte))
         # image + d_hat  (R1 deployable)
-        hf, ht = zscore(df_fit, dt_fit_hat)
+        hf, ht = zscore(df_fit, dt_hat_eval)
         add(kind, task, n, n_pos, "image+dhat",
             probe_auc(np.column_stack([Xf_rep, hf]), ytr,
                       np.column_stack([Xt_rep, ht]), yte))
-        add(kind, task, n, n_pos, "dhat_only", auc_ci(yte, dt_fit_hat))
+        add(kind, task, n, n_pos, "dhat_only", auc_ci(yte, dt_hat_eval))
         # image + true d  (R2)
         tf, tt = zscore(df_true, dt_true_eval)
         add(kind, task, n, n_pos, "image+dtrue",
@@ -115,7 +115,7 @@ def run_version(version, data, args, audit):
             continue
         print(f"  dx {name} ({version}): test n={int(fte.sum())} pos={int(yte.sum())}")
         eval_block("dx_binary", name, Xf_s[ftr], Xt_s[fte], ytr, yte,
-                   df_[ftr], dhat_f[ftr], df_[ftr], dt_true[fte])
+                   df_[ftr], dhat_t[fte], df_[ftr], dt_true[fte])
 
     # ---- conversion ----------------------------------------------------------
     for task, base, tgt in TASKS:
@@ -129,7 +129,7 @@ def run_version(version, data, args, audit):
                 continue
             print(f"  conv {task} {h}y ({version}): finetune n={len(ytr)} | test n={len(yte)} conv={int(yte.sum())}")
             eval_block("conversion", f"{task}_{h}y", Xf_s[tri], Xt_s[tei], ytr, yte,
-                       df_[tri], dhat_f[tri], df_[tri], dt_true[tei])
+                       df_[tri], dhat_t[tei], df_[tri], dt_true[tei])
     return rows
 
 

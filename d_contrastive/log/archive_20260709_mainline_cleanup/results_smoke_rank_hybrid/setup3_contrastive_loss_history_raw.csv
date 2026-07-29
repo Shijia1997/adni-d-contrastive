@@ -1,0 +1,2 @@
+epoch,loss,loss_euclidean,loss_rank,loss_mode,tau,beta,rank_alpha,lambda_rank
+1,299.7607526277241,299.76078635767885,-9.946794690270173e-05,hybrid,1.0,1.0,4.0,0.3

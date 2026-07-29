@@ -1,0 +1,36 @@
+# d_mod3 direct relationship with dx and conversion
+
+Main rows use the strict 3-way held-out TEST split. Conversion AUC uses baseline d_mod3 directly, with no model fitting.
+
+| split            | relation                               | task                         |   horizon_years |   n |   n_positive | score              |   auc_or_rho |      ci_lo |      ci_hi | extra                    |
+|:-----------------|:---------------------------------------|:-----------------------------|----------------:|----:|-------------:|:-------------------|-------------:|-----------:|-----------:|:-------------------------|
+| strict_3way_test | current_dx                             | NORMAL_vs_MCI                |             nan | 368 |          198 | d_mod3             |     0.726649 |   0.673666 |   0.774923 | positive=higher_dx       |
+| strict_3way_test | current_dx                             | MCI_vs_AD                    |             nan | 248 |           50 | d_mod3             |     0.840606 |   0.781253 |   0.893967 | positive=higher_dx       |
+| strict_3way_test | current_dx                             | NORMAL_vs_AD                 |             nan | 220 |           50 | d_mod3             |     0.959294 |   0.930834 |   0.982672 | positive=higher_dx       |
+| strict_3way_test | current_dx_multinomial_fit_on_finetune | NORMAL_vs_rest               |             nan | 418 |          170 | LogReg(d_mod3)     |     0.773553 | nan        | nan        | fit on finetune only     |
+| strict_3way_test | current_dx_multinomial_fit_on_finetune | MCI_vs_rest                  |             nan | 418 |          198 | LogReg(d_mod3)     |     0.625344 | nan        | nan        | fit on finetune only     |
+| strict_3way_test | current_dx_multinomial_fit_on_finetune | AD_vs_rest                   |             nan | 418 |           50 | LogReg(d_mod3)     |     0.895435 | nan        | nan        | fit on finetune only     |
+| strict_3way_test | conversion                             | MCI_to_AD                    |               1 | 147 |            4 | baseline_d_mod3    |     0.655594 |   0.472222 |   1        | direct score, no fitting |
+| strict_3way_test | conversion                             | MCI_to_AD                    |               2 | 123 |           16 | baseline_d_mod3    |     0.706192 |   0.574689 |   0.827781 | direct score, no fitting |
+| strict_3way_test | conversion                             | MCI_to_AD                    |               3 |  97 |           28 | baseline_d_mod3    |     0.67236  |   0.549086 |   0.78556  | direct score, no fitting |
+| strict_3way_test | conversion                             | MCI_to_AD                    |               4 |  83 |           31 | baseline_d_mod3    |     0.679901 |   0.55453  |   0.792468 | direct score, no fitting |
+| strict_3way_test | conversion                             | CN_to_MCI                    |               1 | 113 |            2 | baseline_d_mod3    |     0.752252 |   0.477477 |   0.982143 | direct score, no fitting |
+| strict_3way_test | conversion                             | CN_to_MCI                    |               2 | 102 |            7 | baseline_d_mod3    |     0.777444 |   0.569944 |   0.951403 | direct score, no fitting |
+| strict_3way_test | conversion                             | CN_to_MCI                    |               3 |  78 |           13 | baseline_d_mod3    |     0.734911 |   0.589273 |   0.862727 | direct score, no fitting |
+| strict_3way_test | conversion                             | CN_to_MCI                    |               4 |  71 |           15 | baseline_d_mod3    |     0.765476 |   0.631025 |   0.881582 | direct score, no fitting |
+| old_split        | conversion                             | MCI_to_AD_1y                 |               1 |  85 |            4 | oracle_true_d_mod3 |     0.669753 |   0.376603 |   0.945783 | input_version=raw        |
+| old_split        | conversion                             | MCI_to_AD_2y                 |               2 |  65 |           14 | oracle_true_d_mod3 |     0.662465 |   0.498817 |   0.810876 | input_version=raw        |
+| old_split        | conversion                             | MCI_to_AD_3y                 |               3 |  51 |           19 | oracle_true_d_mod3 |     0.685855 |   0.523555 |   0.839774 | input_version=raw        |
+| old_split        | conversion                             | MCI_to_AD_4y                 |               4 |  45 |           22 | oracle_true_d_mod3 |     0.664032 |   0.485955 |   0.816    | input_version=raw        |
+| old_split        | conversion                             | CN_to_MCI_2y                 |               2 |  59 |            5 | oracle_true_d_mod3 |     0.651852 |   0.440741 |   0.848148 | input_version=raw        |
+| old_split        | conversion                             | CN_to_MCI_3y                 |               3 |  49 |            9 | oracle_true_d_mod3 |     0.577778 |   0.413607 |   0.739314 | input_version=raw        |
+| old_split        | conversion                             | CN_to_MCI_4y                 |               4 |  42 |            9 | oracle_true_d_mod3 |     0.585859 |   0.412023 |   0.755102 | input_version=raw        |
+| old_split        | conversion                             | MCI_time_to_AD_4y_converters |               4 |  22 |           22 | oracle_true_d_mod3 |   nan        | nan        | nan        | input_version=raw        |
+| old_split        | conversion                             | MCI_to_AD_1y                 |               1 |  85 |            4 | oracle_true_d_mod3 |     0.669753 |   0.376603 |   0.945783 | input_version=combat     |
+| old_split        | conversion                             | MCI_to_AD_2y                 |               2 |  65 |           14 | oracle_true_d_mod3 |     0.662465 |   0.498817 |   0.810876 | input_version=combat     |
+| old_split        | conversion                             | MCI_to_AD_3y                 |               3 |  51 |           19 | oracle_true_d_mod3 |     0.685855 |   0.523555 |   0.839774 | input_version=combat     |
+| old_split        | conversion                             | MCI_to_AD_4y                 |               4 |  45 |           22 | oracle_true_d_mod3 |     0.664032 |   0.485955 |   0.816    | input_version=combat     |
+| old_split        | conversion                             | CN_to_MCI_2y                 |               2 |  59 |            5 | oracle_true_d_mod3 |     0.651852 |   0.440741 |   0.848148 | input_version=combat     |
+| old_split        | conversion                             | CN_to_MCI_3y                 |               3 |  49 |            9 | oracle_true_d_mod3 |     0.577778 |   0.413607 |   0.739314 | input_version=combat     |
+| old_split        | conversion                             | CN_to_MCI_4y                 |               4 |  42 |            9 | oracle_true_d_mod3 |     0.585859 |   0.412023 |   0.755102 | input_version=combat     |
+| old_split        | conversion                             | MCI_time_to_AD_4y_converters |               4 |  22 |           22 | oracle_true_d_mod3 |   nan        | nan        | nan        | input_version=combat     |

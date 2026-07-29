@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=w2_phase2_swin
+#SBATCH --partition=gpu
 #SBATCH --nodelist=compute-126
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
@@ -18,7 +19,8 @@ cd /dcs07/zwang/data/adni_d/d_contrastive
 mkdir -p /dcs07/zwang/data/adni_d/logs
 
 source /users/szhang1/fsl/bin/activate optuna_env
-export MPLCONFIGDIR=/tmp/mpl_w2p2_${SLURM_JOB_ID}
+export TMPDIR=/dcs07/zwang/data/adni_d/tmp_runtime/${SLURM_JOB_ID}
+export MPLCONFIGDIR=${TMPDIR}/mpl
 mkdir -p "${MPLCONFIGDIR}"
 export HF_HOME=/dcs07/zwang/data/adni_d/data/tmp_hf_cache
 

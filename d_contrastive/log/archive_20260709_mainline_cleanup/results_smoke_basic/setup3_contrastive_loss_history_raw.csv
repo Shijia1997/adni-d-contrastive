@@ -1,0 +1,3 @@
+epoch,loss,loss_euclidean,loss_rank,loss_mode,tau,beta,rank_alpha,rank_nu,lambda_rank
+1,-0.01703573827705297,1961.6207982113488,-0.01703573827705297,rank_kendall_basic,0.1,1.0,10.0,,1.0
+2,-0.025076829362660646,2071.0279027035363,-0.025076829362660646,rank_kendall_basic,0.1,1.0,10.0,,1.0

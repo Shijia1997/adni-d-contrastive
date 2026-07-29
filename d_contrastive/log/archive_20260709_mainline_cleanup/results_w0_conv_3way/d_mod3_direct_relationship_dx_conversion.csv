@@ -1,0 +1,31 @@
+split,relation,task,horizon_years,n,n_positive,score,auc_or_rho,ci_lo,ci_hi,extra
+strict_3way_test,current_dx,NORMAL_vs_MCI,,368,198,d_mod3,0.7266488413547236,0.673666178215708,0.774922644852739,positive=higher_dx
+strict_3way_test,current_dx,MCI_vs_AD,,248,50,d_mod3,0.8406060606060606,0.7812525955309957,0.8939673173159706,positive=higher_dx
+strict_3way_test,current_dx,NORMAL_vs_AD,,220,50,d_mod3,0.9592941176470589,0.930834421017403,0.9826719971236597,positive=higher_dx
+strict_3way_test,current_dx_multinomial_fit_on_finetune,NORMAL_vs_rest,,418,170,LogReg(d_mod3),0.7735531309297913,,,fit on finetune only
+strict_3way_test,current_dx_multinomial_fit_on_finetune,MCI_vs_rest,,418,198,LogReg(d_mod3),0.6253443526170799,,,fit on finetune only
+strict_3way_test,current_dx_multinomial_fit_on_finetune,AD_vs_rest,,418,50,LogReg(d_mod3),0.8954347826086957,,,fit on finetune only
+strict_3way_test,conversion,MCI_to_AD,1.0,147,4,baseline_d_mod3,0.6555944055944055,0.4722222222222222,1.0,"direct score, no fitting"
+strict_3way_test,conversion,MCI_to_AD,2.0,123,16,baseline_d_mod3,0.7061915887850467,0.5746893354691519,0.8277813852813852,"direct score, no fitting"
+strict_3way_test,conversion,MCI_to_AD,3.0,97,28,baseline_d_mod3,0.672360248447205,0.5490858585858586,0.7855595238095237,"direct score, no fitting"
+strict_3way_test,conversion,MCI_to_AD,4.0,83,31,baseline_d_mod3,0.6799007444168734,0.5545302939438187,0.7924681803242521,"direct score, no fitting"
+strict_3way_test,conversion,CN_to_MCI,1.0,113,2,baseline_d_mod3,0.7522522522522523,0.4774774774774775,0.9821428571428572,"direct score, no fitting"
+strict_3way_test,conversion,CN_to_MCI,2.0,102,7,baseline_d_mod3,0.7774436090225564,0.5699444444444445,0.9514030612244898,"direct score, no fitting"
+strict_3way_test,conversion,CN_to_MCI,3.0,78,13,baseline_d_mod3,0.7349112426035503,0.5892733990147784,0.8627271220159151,"direct score, no fitting"
+strict_3way_test,conversion,CN_to_MCI,4.0,71,15,baseline_d_mod3,0.7654761904761905,0.6310253818508536,0.8815824844368987,"direct score, no fitting"
+old_split,conversion,MCI_to_AD_1y,1.0,85,4,oracle_true_d_mod3,0.6697530864197532,0.3766033349366683,0.9457831325301204,input_version=raw
+old_split,conversion,MCI_to_AD_2y,2.0,65,14,oracle_true_d_mod3,0.6624649859943977,0.4988168804755944,0.8108755641521599,input_version=raw
+old_split,conversion,MCI_to_AD_3y,3.0,51,19,oracle_true_d_mod3,0.6858552631578947,0.5235554558745348,0.8397741312741311,input_version=raw
+old_split,conversion,MCI_to_AD_4y,4.0,45,22,oracle_true_d_mod3,0.6640316205533597,0.4859547430830039,0.816,input_version=raw
+old_split,conversion,CN_to_MCI_2y,2.0,59,5,oracle_true_d_mod3,0.6518518518518519,0.4407407407407407,0.8481481481481481,input_version=raw
+old_split,conversion,CN_to_MCI_3y,3.0,49,9,oracle_true_d_mod3,0.5777777777777778,0.4136067193675889,0.7393135435992583,input_version=raw
+old_split,conversion,CN_to_MCI_4y,4.0,42,9,oracle_true_d_mod3,0.5858585858585859,0.4120234204793028,0.7551020408163265,input_version=raw
+old_split,conversion,MCI_time_to_AD_4y_converters,4.0,22,22,oracle_true_d_mod3,,,,input_version=raw
+old_split,conversion,MCI_to_AD_1y,1.0,85,4,oracle_true_d_mod3,0.6697530864197532,0.3766033349366683,0.9457831325301204,input_version=combat
+old_split,conversion,MCI_to_AD_2y,2.0,65,14,oracle_true_d_mod3,0.6624649859943977,0.4988168804755944,0.8108755641521599,input_version=combat
+old_split,conversion,MCI_to_AD_3y,3.0,51,19,oracle_true_d_mod3,0.6858552631578947,0.5235554558745348,0.8397741312741311,input_version=combat
+old_split,conversion,MCI_to_AD_4y,4.0,45,22,oracle_true_d_mod3,0.6640316205533597,0.4859547430830039,0.816,input_version=combat
+old_split,conversion,CN_to_MCI_2y,2.0,59,5,oracle_true_d_mod3,0.6518518518518519,0.4407407407407407,0.8481481481481481,input_version=combat
+old_split,conversion,CN_to_MCI_3y,3.0,49,9,oracle_true_d_mod3,0.5777777777777778,0.4136067193675889,0.7393135435992583,input_version=combat
+old_split,conversion,CN_to_MCI_4y,4.0,42,9,oracle_true_d_mod3,0.5858585858585859,0.4120234204793028,0.7551020408163265,input_version=combat
+old_split,conversion,MCI_time_to_AD_4y_converters,4.0,22,22,oracle_true_d_mod3,,,,input_version=combat

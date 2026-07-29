@@ -1,0 +1,56 @@
+{
+  "setup1": {
+    "cn_ad_auc": 0.859529411764706,
+    "3class_acc": 0.45171849427168576,
+    "3class_macro_auc": 0.657122449587882,
+    "mci_conv_auc": 0.6435714285714286,
+    "cn_mci_conv_auc": 0.3168539325842697,
+    "r2_d_mod3": 0.2370208374243633,
+    "pearson_d_mod3": 0.5123545020823749,
+    "spearman_d_mod3": 0.4667079120022348,
+    "alignment_spearman": 0.045348603416511986
+  },
+  "setup2": {
+    "cn_ad_auc": 0.7281960784313726,
+    "3class_acc": 0.46153846153846156,
+    "3class_macro_auc": 0.6117375828153921,
+    "mci_conv_auc": 0.6364285714285713,
+    "cn_mci_conv_auc": 0.2808988764044944,
+    "r2_d_mod3": 0.014754151101485924,
+    "pearson_d_mod3": 0.3360718750422066,
+    "spearman_d_mod3": 0.30493206731659456,
+    "alignment_spearman": 0.14578322636192917
+  },
+  "setup3": {
+    "z_std_train": 0.023484837263822556,
+    "z_std_test": 0.024650240316987038,
+    "z_dim_std_mean": 0.009741993620991707,
+    "z_dim_std_max": 0.11727169156074524,
+    "z_active_dims_005": 18,
+    "z_active_dims_010": 2,
+    "z_active_dims_050": 0,
+    "cn_ad_auc": 0.8230588235294118,
+    "3class_acc": 0.486088379705401,
+    "3class_macro_auc": 0.6577507540697142,
+    "mci_conv_auc": 0.7571428571428571,
+    "cn_mci_conv_auc": 0.6696629213483146,
+    "r2_d_mod3": 0.1531305413494377,
+    "pearson_d_mod3": 0.46366345516843566,
+    "spearman_d_mod3": 0.43963497878022184,
+    "alignment_spearman": 0.21082292086145657,
+    "pca_plot": "results_plain_euclidean_05152016_s60_c150_h384_l256/setup3_pca_d_mod3_raw.png",
+    "pairwise_plot": "results_plain_euclidean_05152016_s60_c150_h384_l256/setup3_pairwise_distance_raw.png",
+    "tsne_plot": "results_plain_euclidean_05152016_s60_c150_h384_l256/setup3_tsne_d_mod3_raw.png"
+  },
+  "setup4": {
+    "cn_ad_auc": 0.8435294117647059,
+    "3class_acc": 0.48117839607201307,
+    "3class_macro_auc": 0.6672889691322856,
+    "mci_conv_auc": 0.6614285714285715,
+    "cn_mci_conv_auc": 0.34606741573033706,
+    "r2_d_mod3": -0.015542326892194147,
+    "pearson_d_mod3": 0.42129218596970225,
+    "spearman_d_mod3": 0.3861287306905805,
+    "alignment_spearman": 0.10706485270385468
+  }
+}
