@@ -28,6 +28,9 @@ external_rank.pdf
 # Historical experiment output directories. Keep final consolidated CSV/XLSX
 # summaries at d_contrastive/*.csv, *.xlsx, *.md tracked separately.
 d_contrastive/results*/
+!d_contrastive/results_w2_fair20_raw_final/
+!d_contrastive/results_w2_fair20_raw_final/**
+d_contrastive/log/
 d_contrastive/download_targets_20260515/
 
 # Old one-off submit scripts from hyperparameter sweeps.

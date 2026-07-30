@@ -1,45 +1,44 @@
-# d-contrastive mainline 2-split package
+# Mainline 2-way W2 manifest
 
-This directory is trimmed to the current mainline experiment:
+This manifest lists the files intentionally kept at the top of
+`d_contrastive/` after the July 30, 2026 fair20 cleanup.
 
-1. Test whether Wang `d_mod3` tracks diagnosis and conversion.
-2. Test whether frozen/adapted Swin image embeddings learn usable `d_mod3` information.
-3. Evaluate downstream diagnosis and conversion with two splits: train and held-out test.
-4. Compare frozen embeddings, d-supervised heads, explicit d-support, and LoRA-adapted Swin embeddings.
+## Experiment scope
 
-Age/APOE support analyses are intentionally not included here yet.
+- Split: RID-disjoint train/test only.
+- Input: 128^3 frozen Swin image embeddings or raw SyN-registered volumes for
+  encoder adaptation.
+- Supervisor: Wang `d_mod3`.
+- Excluded for now: age/APOE support analyses.
 
-## Core code
+## Kept code
 
 - `minimal_v0_contrastive.py`
 - `experiment_utils.py`
-- `compute_d_mod3_direct_relationship.py`
 - `run_w0_phase0_dvalue.py`
 - `run_w0_phase1_diagnosis.py`
 - `run_w0_conversion_3way.py`
 - `run_w2_phase1_dsupport.py`
 - `train_w2_phase2_swin.py`
-- `run_w2_phase01.sbatch`
-- `run_w2_phase2_swin.sbatch`
+- `train_w2_direct_lora_downstream.py`
 
-## Main results
+## Kept submit scripts
 
-- `results_w2_phase0/`
-  - true-d oracle and deployable `d_hat` relation to diagnosis/conversion
-- `results_w2_phase1_dx/`
-  - frozen image embedding diagnosis downstream results
-- `results_w2_phase1_conv/`
-  - frozen image embedding conversion downstream results
-- `results_w2_phase1_dsupport/`
-  - image-only vs image + `d_hat` vs image + true-d support analysis
-- `results_w2_phase2/`
-  - LoRA-adapted Swin embedding runs and downstream evaluations
+- `run_w2_phase1_budget20_eff128.sbatch`
+- `run_w2_phase1_conv_budget20_eff128.sbatch`
+- `run_w2_budget20_eff128.sbatch`
+- `run_w2_phase2_full_retry.sbatch`
 
-## Archive
+## Kept result directories
 
-Older smoke tests, old split/3-way runs, RASP/RASPER experiments, rank sweeps,
-download helpers, and historical summaries were moved to:
+- `results_w2_fair20_raw_final/`
+  - final raw-only fair20 summary tables.
 
-- `log/archive_20260709_mainline_cleanup/`
+## Archived
 
-No files were deleted during this cleanup.
+Historical one-off scripts, detailed intermediate result folders, old summaries,
+module dumps, and obsolete sbatch files were moved to:
+
+- `log/archive_20260730_fair20_cleanup/`
+
+They are not part of the mainline package and are ignored by git.

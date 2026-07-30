@@ -1,54 +1,49 @@
-# ADNI d_contrastive Package Manifest
+# ADNI d-contrastive package manifest
 
-This directory has been trimmed conceptually for a git package. The core code,
-compact frozen embeddings, matched metadata, and final summary tables are kept.
-Historical logs, intermediate run directories, checkpoints, caches, and old
-download-target files are ignored by `.gitignore`.
+This repository is trimmed for the current W2 fair20 two-way experiment. It keeps
+the core code, compact frozen/adapted-result summaries, 128^3 Swin embeddings,
+and matched metadata. Historical scripts/results/logs are archived locally under
+`d_contrastive/log/` and ignored by git.
 
 ## Core Code
 
-Add these files:
-
 ```bash
 git add .gitignore PACKAGE_MANIFEST.md
-git add d_contrastive/README.md
+git add d_contrastive/README.md d_contrastive/MAINLINE_2SPLIT_MANIFEST.md
 git add d_contrastive/minimal_v0_contrastive.py
 git add d_contrastive/experiment_utils.py
-git add d_contrastive/run_exp2_exp0.py
-git add d_contrastive/run_exp1_dx_pretrain.py
-git add d_contrastive/run_exp1_dx_pretrain.sbatch
-git add d_contrastive/run_exp4_conversion_suite.py
-git add d_contrastive/consolidate_rank_results.py
-git add d_contrastive/make_new_results_summary.py
-git add d_contrastive/smoke_test_package.py
+git add d_contrastive/run_w0_phase0_dvalue.py
+git add d_contrastive/run_w0_phase1_diagnosis.py
+git add d_contrastive/run_w0_conversion_3way.py
+git add d_contrastive/run_w2_phase1_dsupport.py
+git add d_contrastive/train_w2_phase2_swin.py
+git add d_contrastive/train_w2_direct_lora_downstream.py
+git add d_contrastive/run_w2_phase1_budget20_eff128.sbatch
+git add d_contrastive/run_w2_phase1_conv_budget20_eff128.sbatch
+git add d_contrastive/run_w2_budget20_eff128.sbatch
+git add d_contrastive/run_w2_phase2_full_retry.sbatch
 ```
 
-Optional helper scripts for image download planning:
+## Core Results
+
+Final raw-only fair20 tables:
 
 ```bash
-git add d_contrastive/build_final_image_id_download_list.py
-git add d_contrastive/build_v3_final_and_coverage.py
-git add d_contrastive/check_projected_longitudinal_gain.py
-git add d_contrastive/diagnose_cn_mci_conversion.py
+git add d_contrastive/results_w2_fair20_raw_final
 ```
 
-## Core Result Tables
+This directory contains:
 
-```bash
-git add d_contrastive/AD_contrastive_new_results_summary_20260605.xlsx
-git add d_contrastive/AD_contrastive_key_results_20260605.csv
-git add d_contrastive/AD_contrastive_new_results_summary_20260605.md
-git add d_contrastive/rank_sweep_with_ml_baselines.csv
-git add d_contrastive/rank_sweep_best_comparison.csv
-git add d_contrastive/rank_sweep_conversion_ci.csv
-git add d_contrastive/rank_sweep_all_results.csv
-git add d_contrastive/exp0_dhat_vs_contrastive_conversion.csv
-git add d_contrastive/exp1_method2_dx_pretrain.csv
-git add d_contrastive/exp2_censoring_report.csv
-git add d_contrastive/exp4_conversion_task_suite.csv
-git add d_contrastive/exp4_conversion_cohort_counts.csv
-git add d_contrastive/conversion_cohorts_censored.csv
-```
+- `raw_phase0_d_and_dhat.csv`
+- `raw_dsupport.csv`
+- `raw_diagnosis_all_methods_fair20.csv`
+- `raw_diagnosis_all_methods_fair20_pivot.csv`
+- `raw_conversion_all_methods_fair20.csv`
+- `raw_conversion_all_methods_fair20_pivot.csv`
+
+Detailed run directories such as `results_w2_budget20_eff128/` and
+`results_w2_phase1_budget20_eff128/` are archived under `d_contrastive/log/`
+because they contain intermediate outputs and adapted embeddings.
 
 ## Core Data
 
@@ -59,49 +54,41 @@ git add data/embeddings_128_05152016
 git add data/master_smri_05152016
 ```
 
-Sizes at cleanup time:
-
-- `data/embeddings_128_05152016`: about 34 MB
-- `data/master_smri_05152016`: about 5 MB
-
 ## Do Not Add
 
 These are ignored and should not be committed:
 
-- `d_contrastive/logs/`
-- `d_contrastive/results*/`
+- `d_contrastive/log/`
+- `d_contrastive/results*/` except `results_w2_fair20_raw_final/`
 - `d_contrastive/__pycache__/`
-- `d_contrastive/download_targets_20260515/`
-- `d_contrastive/submit_*.sh`
-- `*.pt`, `*.pth`, `*.ckpt`
+- checkpoints: `*.pt`, `*.pth`, `*.ckpt`
+- scheduler logs: `*.out`, `*.err`, `slurm-*.out`, `logs/`
 - raw DICOM/NIfTI preprocessing outputs
-- broad `data/**` outside the two explicitly kept data directories
+- broad `data/**` outside the explicitly unignored data directories
 
-## Smoke Test
-
-Run before committing:
+## Sanity Check
 
 ```bash
-source /users/szhang1/fsl/bin/activate optuna_env
-python d_contrastive/smoke_test_package.py
-```
-
-Expected final line:
-
-```text
-SMOKE TEST PASSED
+python -m py_compile \
+  d_contrastive/minimal_v0_contrastive.py \
+  d_contrastive/experiment_utils.py \
+  d_contrastive/run_w0_phase0_dvalue.py \
+  d_contrastive/run_w0_phase1_diagnosis.py \
+  d_contrastive/run_w0_conversion_3way.py \
+  d_contrastive/run_w2_phase1_dsupport.py \
+  d_contrastive/train_w2_phase2_swin.py \
+  d_contrastive/train_w2_direct_lora_downstream.py
+rm -rf d_contrastive/__pycache__
 ```
 
 ## Suggested Commit
-
-After running `git init` in a normal shell if needed:
 
 ```bash
 git status --short
 git add .gitignore PACKAGE_MANIFEST.md d_contrastive data/embeddings_128_05152016 data/master_smri_05152016
 git status --short
-git commit -m "Package ADNI frozen Swin contrastive experiments"
+git commit -m "Package ADNI W2 d-contrastive fair20 experiments"
 ```
 
-Inspect `git status --short` carefully before commit. It should not include
-logs, historical `results*/` directories, checkpoints, or raw imaging files.
+Inspect `git status --short` before committing. It should not include log
+archives, old result directories, checkpoints, or raw imaging files.

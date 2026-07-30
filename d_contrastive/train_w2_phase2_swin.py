@@ -1,26 +1,25 @@
-"""Workstream 2, Phase 2 (GPU, cluster-only): unfreeze the Swin backbone on d.
+"""Workstream 2, Phase 2: adapt the Swin backbone using d_mod3 supervision.
 
-Trains the BTCV SwinUNETR backbone -- via LoRA adapters OR full fine-tune -- plus
-a ContrastiveMLP_v2 head, on the CONTRASTIVE split's d_mod3 (loss geometry chosen
-by --loss_mode: euclidean / rank_kendall_basic / hybrid_basic / regress_d). It
-then exports the ADAPTED 768-d backbone embeddings for ALL images across the three
-splits, in the same on-disk layout as the frozen encoder
-(`swin_latent.npy` + `image_id_order.npy`).
+The current mainline uses the RID-disjoint 2-way train/test split. This script can
+also read the older 3-way split, but the fair20 runs call it with `--mode 2way`.
 
-Downstream stays identical to Phase 1: point the frozen CPU drivers
-(run_w0_phase0_dvalue.py / run_w0_phase1_diagnosis.py / run_w0_conversion_3way.py)
-at this --out_dir with `--versions raw`. Because the downstream pipeline is byte-
-for-byte the same as on the original frozen features, any change is attributable to
-the backbone having adapted -- the clean "adapted-768 vs original-768" comparison.
+It trains the BTCV SwinUNETR backbone via LoRA adapters or full fine-tune, with a
+small projection head and one d-supervised objective:
 
-CANNOT be validated off-cluster (needs GPU + raw NIfTI volumes + the BTCV
-swinunetr package). The companion sbatch runs a forward/backward smoke + prints the
-module tree BEFORE the full job so wrong LoRA targets fail loudly on the first run.
+- `regress_d`: direct scalar d_mod3 regression.
+- `euclidean`: pairwise Euclidean geometry matching d_mod3 proximity.
+- `hybrid_basic`: Euclidean geometry plus soft rank ordering.
 
-Compute contract (see plan.md 8.8): physical batch 8 + gradient accumulation to an
-effective batch (default 16 -> 128), gradient checkpointing on. NOTE (plan 8.7 pt5):
-accumulation does NOT enlarge the in-batch pair set for the pairwise geometries --
-only regress_d is exact under accumulation.
+After adaptation it exports adapted 768-d backbone embeddings in the same layout
+as the frozen encoder (`swin_latent.npy` + `image_id_order.npy`). The downstream
+CPU drivers then run unchanged against that feature directory, so comparisons are
+adapted-768 vs original frozen-768.
+
+This is a cluster/GPU script: it needs raw NIfTI volumes, the local BTCV
+SwinUNETR package, and enough memory for 128^3 volumes. The fair20 submit scripts
+use physical micro-batches plus gradient accumulation to an effective batch of
+128. Accumulation gives the correct effective batch for regression; for pairwise
+losses, the pair set is still limited to each physical micro-batch.
 """
 import argparse
 import re
